@@ -111,7 +111,7 @@ def run_agility_task(gui):
         dt = gui.clock.tick(60) / 1000.0
         elapsed += dt
         gui.advance_clock(dt)
-        if gui.game_over_text is not None:
+        if gui.screen_state != "playing":
             return False
 
         for event in _pump(gui):
@@ -169,7 +169,7 @@ def run_memory_task(gui):
         dt = gui.clock.tick(60) / 1000.0
         elapsed += dt
         gui.advance_clock(dt)
-        if gui.game_over_text is not None:
+        if gui.screen_state != "playing":
             return False
         _pump(gui)
 
@@ -187,7 +187,7 @@ def run_memory_task(gui):
         dt = gui.clock.tick(60) / 1000.0
         elapsed += dt
         gui.advance_clock(dt)
-        if gui.game_over_text is not None:
+        if gui.screen_state != "playing":
             return False
         _pump(gui)
         _fill_backdrop(gui)
@@ -207,7 +207,7 @@ def run_memory_task(gui):
     while True:
         dt = gui.clock.tick(60) / 1000.0
         gui.advance_clock(dt)
-        if gui.game_over_text is not None:
+        if gui.screen_state != "playing":
             return False
 
         events = _pump(gui)
@@ -251,7 +251,7 @@ def run_thinking_task(gui):
     while True:
         dt = gui.clock.tick(60) / 1000.0
         gui.advance_clock(dt)
-        if gui.game_over_text is not None:
+        if gui.screen_state != "playing":
             return False
 
         events = _pump(gui)

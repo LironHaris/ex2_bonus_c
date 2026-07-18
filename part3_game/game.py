@@ -19,13 +19,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pygame  # noqa: E402
 
-from engine import board_route, can_board, is_stuck, sort_routes, tick  # noqa: E402
+from engine import (  # noqa: E402
+    board_route, can_board, enter_level, is_stuck, next_bus_minutes, routes_from, sort_routes, tick,
+)
 from levels import LEVELS  # noqa: E402
 from minigames import run_task  # noqa: E402
 from models import GameState  # noqa: E402
 
 STARTING_MONEY = 30
-STARTING_TIME = 22.0
+STARTING_TIME = 26.0
 
 # The clock never waits for the player to decide -- it counts down in real
 # time regardless of input, on top of whatever duration boarding a line costs.
@@ -48,8 +50,6 @@ TEXT_COLOR = (45, 40, 35)          # dark warm gray, readable on light stone
 DIM_TEXT_COLOR = (110, 102, 90)
 AFFORD_COLOR = (20, 120, 55)       # dark green, readable on light panels
 DENY_COLOR = (165, 35, 35)         # dark red, readable on light panels
-OVERLAY_SUCCESS_COLOR = (120, 230, 140)  # bright green, readable on the dark overlay
-OVERLAY_FAIL_COLOR = (235, 100, 100)     # bright red, readable on the dark overlay
 
 # -- retro amber LCD "electronic sign" palette, for the station display -----
 SIGN_BG = (18, 16, 14)
@@ -90,7 +90,7 @@ MAP_PATCHES = [
     (0.35, 0.78, 62, (198, 228, 198, 55)),
 ]
 
-# Red, Green, Blue, Yellow, Purple -- one per bus line, in level order.
+# One color per bus line, in level order -- up to 8 lines (Level 5's max).
 # Darkened slightly from pure primaries so they stay legible on light stone.
 ROUTE_COLORS = [
     (200, 30, 30),
@@ -98,12 +98,18 @@ ROUTE_COLORS = [
     (30, 95, 205),
     (205, 165, 20),
     (150, 55, 165),
+    (215, 120, 30),
+    (30, 150, 150),
+    (210, 80, 150),
 ]
 
 # Display labels, aligned by index with ROUTE_COLORS/level.bus_routes -- each
 # line's on-screen name is just its color (levels.py's route.name fields are
 # lowercase tags like "redline" for the C validator; this is the human label).
-LINE_LABELS = ["Red Line", "Green Line", "Blue Line", "Yellow Line", "Purple Line"]
+LINE_LABELS = [
+    "Red Line", "Green Line", "Blue Line", "Yellow Line",
+    "Purple Line", "Orange Line", "Teal Line", "Pink Line",
+]
 
 # Scattered city blocks: (x_fraction, y_fraction, width, height, has_roof_unit)
 # within MAP_RECT. Kept clear of the far left/right edges, where the
@@ -122,6 +128,21 @@ BOTTOM_PANEL_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 320, 760, 220)
 # A tab flush with the right edge of the map, and the modal it opens.
 TRIP_PLANNER_TAB_RECT = pygame.Rect(778, 150, 22, 160)
 TRIP_PLANNER_MODAL_RECT = pygame.Rect(90, 60, 620, 460)
+
+# -- title screen & end screen -----------------------------------------------
+TITLE = "BUS ROUTE ECONOMY"
+RULES_TEXT = (
+    "Sort the bus lines with the real C bubble/quick sort algorithms in the Trip Planner, "
+    "then board lines to travel from HOME to UNIVERSITY. Every line costs money, and costs "
+    "time equal to its wait for the next departure plus its travel duration, so you can only "
+    "board a line you can afford and reach on time. Some lines have a station task -- Agility, "
+    "Memory, or Thinking -- you must pass along the way. In later levels not every line starts "
+    "at HOME -- you'll need to transfer between connecting lines at hub stations to cross the "
+    "whole network. Clear all 5 levels to win, but fail a task or run out of time or money and "
+    "it's game over."
+)
+START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, 440, 220, 56)
+RETURN_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 130, 380, 260, 54)
 
 SORT_FIELDS = ["name", "distance", "duration"]
 SORT_KEYS = {pygame.K_1: "name", pygame.K_2: "distance", pygame.K_3: "duration"}
@@ -153,9 +174,23 @@ def _map_point(row, col, row_range, col_range, rect):
 
 
 def _route_bounds(level):
-    rows = [p[0] for r in level.bus_routes for p in r.path] + [level.start[0], level.end[0]]
-    cols = [p[1] for r in level.bus_routes for p in r.path] + [level.start[1], level.end[1]]
+    rows = [p[0] for r in level.bus_routes for p in r.path] + [c[0] for c in level.nodes.values()]
+    cols = [p[1] for r in level.bus_routes for p in r.path] + [c[1] for c in level.nodes.values()]
     return (min(rows), max(rows)), (min(cols), max(cols))
+
+
+def _node_label(node_name):
+    """Human-readable label for a node: HOME/UNIVERSITY as-is, transfer hubs
+    ("CENTRAL_STATION") title-cased with spaces ("Central Station")."""
+    if node_name in ("HOME", "UNIVERSITY"):
+        return node_name
+    return node_name.replace("_", " ").title()
+
+
+def _node_short_label(node_name):
+    """Compact tag for narrow table columns (Trip Planner FROM/TO) -- just
+    the first word of the full label, e.g. "Central Station" -> "CENTRAL"."""
+    return _node_label(node_name).split(" ")[0].upper()
 
 
 def _point_segment_distance(p, a, b):
@@ -205,17 +240,29 @@ class GameGUI:
         self.clock = pygame.time.Clock()
         self._recompute_scale()
 
-        self.state = GameState(money=STARTING_MONEY, time_remaining=STARTING_TIME)
-        self.level = LEVELS[self.state.level_index]
-        self.sort_by = "name"
-        self.routes = sort_routes(self.level, self.sort_by)
-        self.message = ""
-        self.game_over_text = None  # (text, color) once the run ends
-
         self.route_rows = []  # [(rect, BusRoute), ...] for click handling (real screen space)
+        self.trip_planner_tab_rect = self._srect(TRIP_PLANNER_TAB_RECT)
+        self.start_button_rect = self._srect(START_BUTTON_RECT)
+        self.return_button_rect = self._srect(RETURN_BUTTON_RECT)
+
+        self._start_new_game()
+        self.screen_state = "title"  # "title" | "playing" | "over" -- title overrides the "playing" _start_new_game() sets
+
+    def _start_new_game(self):
+        """(Re)initialize a fresh run: starting money/time, Level 1, and all
+        transient UI state. Called once from __init__ and again whenever the
+        player returns to the main menu, so a new game always starts clean."""
+        self.level = LEVELS[0]
+        self.state = GameState(money=STARTING_MONEY, time_remaining=STARTING_TIME, current_node=self.level.start)
+        self.sort_by = "name"
+        self.routes = sort_routes(routes_from(self.level, self.state.current_node), self.sort_by)
+        self.message = ""
+        self.run_result = None  # "win" | "lose", set once screen_state == "over"
+
+        self.route_rows = []
         self.hovered_route = None  # synchronized between the map and the list
         self.trip_planner_open = False
-        self.trip_planner_tab_rect = self._srect(TRIP_PLANNER_TAB_RECT)
+        self.screen_state = "playing"
 
         self._check_stuck()
 
@@ -231,15 +278,6 @@ class GameGUI:
         color via the same level.bus_routes index."""
         idx = self.level.bus_routes.index(route)
         return LINE_LABELS[idx % len(LINE_LABELS)]
-
-    def _next_bus_minutes(self, route):
-        """Cosmetic "next departure" countdown for the electronic sign,
-        derived from route.frequency and wall-clock time since pygame.init()
-        -- purely a display flavor detail, independent of GameState and the
-        money/time boarding gates (which still key off price/duration only)."""
-        interval = max(1.0, 60.0 / route.frequency)
-        elapsed_minutes = pygame.time.get_ticks() / 1000.0 / 60.0
-        return interval - (elapsed_minutes % interval)
 
     # -- responsive scaling ---------------------------------------------------
     def _recompute_scale(self):
@@ -298,7 +336,7 @@ class GameGUI:
     # -- state transitions ---------------------------------------------------
     def apply_sort(self, sort_by):
         self.sort_by = sort_by
-        self.routes = sort_routes(self.level, sort_by)
+        self.routes = sort_routes(routes_from(self.level, self.state.current_node), sort_by)
         self.message = ""
 
     def advance_clock(self, dt_seconds):
@@ -306,11 +344,18 @@ class GameGUI:
         frame from run(), and also from inside the blocking mini-game and
         bus-animation sub-loops (via minigames.py's gui.advance_clock) so the
         clock never pauses just because a task or animation has taken over
-        the screen -- only game-over itself stops it."""
-        if self.game_over_text is None:
+        the screen -- only leaving the "playing" state stops it."""
+        if self.screen_state == "playing":
             elapsed_minutes = dt_seconds * GAME_MINUTES_PER_REAL_SECOND
             self.state = tick(self.state, elapsed_minutes)
             self._check_stuck()
+
+    def _trigger_game_over(self, result):
+        """End the current run: result is "win" or "lose". The end screen is
+        deliberately text-free beyond a single word (see draw_end_screen) --
+        no per-cause explanation is shown, so callers don't need one either."""
+        self.run_result = result
+        self.screen_state = "over"
 
     def attempt_board(self, route):
         if not can_board(self.state, route):
@@ -320,57 +365,69 @@ class GameGUI:
         # Highlight the boarding route on the map/list for the whole sequence.
         self.hovered_route = route
         color = self._route_color(route)
-        station_idx = route.path.index(route.station)
 
-        # Phase 1: drive from HOME to the station, then the station's mini-game
-        # gates boarding -- money/time affordability alone isn't enough, the
-        # player must also clear the cognitive task tied to that stop. The
-        # clock keeps ticking throughout both phases and the task itself, so
-        # a slow player can still run out of time mid-sequence.
-        self._animate_bus(route.path[:station_idx + 1], color)
-        if self.game_over_text is not None:
-            return
+        if route.station is None:
+            # No intermediate station or mini-game on this hop (levels 1 and
+            # 3-5) -- drive straight from its origin to its destination.
+            self._animate_bus(route.path, color)
+            if self.screen_state != "playing":
+                return
+        else:
+            station_idx = route.path.index(route.station)
 
-        if not run_task(route.task_type, self):
-            if self.game_over_text is None:
-                self.game_over_text = (
-                    f"GAME OVER! Failed the station task on {self._route_label(route)}.",
-                    OVERLAY_FAIL_COLOR,
-                )
-            return
+            # Phase 1: drive from the origin to the station, then the
+            # station's mini-game gates boarding -- money/time affordability
+            # alone isn't enough, the player must also clear the cognitive
+            # task tied to that stop (level 2 only). The clock keeps ticking
+            # throughout both phases and the task itself, so a slow player
+            # can still run out of time mid-sequence.
+            self._animate_bus(route.path[:station_idx + 1], color)
+            if self.screen_state != "playing":
+                return
 
-        # Phase 2: drive from the station on to UNIVERSITY.
-        self._animate_bus(route.path[station_idx:], color)
-        if self.game_over_text is not None:
-            return
+            if not run_task(route.task_type, self):
+                if self.screen_state == "playing":
+                    self._trigger_game_over("lose")
+                return
 
+            # Phase 2: drive from the station on to the destination.
+            self._animate_bus(route.path[station_idx:], color)
+            if self.screen_state != "playing":
+                return
+
+        # Re-check right before actually deducting: the wait-for-next-bus
+        # component of the cost can grow while the animation/task above was
+        # playing out, so a boarding that was valid on click can still fail.
         if not can_board(self.state, route):
-            self.game_over_text = (
-                f"GAME OVER! Ran out of time boarding {self._route_label(route)}.",
-                OVERLAY_FAIL_COLOR,
-            )
+            self._trigger_game_over("lose")
             return
 
+        reached_end = route.destination == self.level.end
+        cleared_level = self.level
         self.state = board_route(self.state, self.level, route)
-        self.message = (
-            f"Boarded {self._route_label(route)}! Level cleared. "
-            f"+{self.level.reward_money} NIS, +{self.level.reward_time} time."
-        )
 
-        if self.state.level_index >= len(LEVELS):
-            self.game_over_text = ("SUCCESS! Target Reached", OVERLAY_SUCCESS_COLOR)
-            return
+        if reached_end:
+            self.message = (
+                f"Boarded {self._route_label(route)}! Level cleared. "
+                f"+{cleared_level.reward_money} NIS, +{cleared_level.reward_time} time."
+            )
+            if self.state.level_index >= len(LEVELS):
+                self._trigger_game_over("win")
+                return
+            self.level = LEVELS[self.state.level_index]
+            self.state = enter_level(self.state, self.level)
+        else:
+            self.message = (
+                f"Boarded {self._route_label(route)}! Now at {_node_label(self.state.current_node)} "
+                f"-- find a connecting line."
+            )
 
-        self.level = LEVELS[self.state.level_index]
-        self.routes = sort_routes(self.level, self.sort_by)
+        self.routes = sort_routes(routes_from(self.level, self.state.current_node), self.sort_by)
         self._check_stuck()
 
     def _check_stuck(self):
-        if self.game_over_text is None and is_stuck(self.state, self.level):
-            self.game_over_text = (
-                "GAME OVER! No remaining bus line is both affordable and on time.",
-                OVERLAY_FAIL_COLOR,
-            )
+        if self.screen_state == "playing" and is_stuck(self.state, self.level):
+            self._trigger_game_over("lose")
 
     def _update_hover(self):
         """Recompute which route (if any) the mouse is over -- either its row
@@ -424,7 +481,7 @@ class GameGUI:
             dt = self.clock.tick(60) / 1000.0
             elapsed += dt
             self.advance_clock(dt)
-            if self.game_over_text is not None:
+            if self.screen_state != "playing":
                 return
 
             for event in pygame.event.get():
@@ -575,6 +632,35 @@ class GameGUI:
         lx, ly = self._spt((x, y + 14))
         self.screen.blit(label, label.get_rect(center=(lx, ly)))
 
+    def _draw_hub_icon(self, pos, node_name):
+        """A transfer hub (levels 3-5): two overlapping rings on a stone
+        puck -- the classic "interchange" glyph -- with a bright halo while
+        it's the node the player currently stands at, so it's always clear
+        where the currently-listed lines depart from."""
+        cx, cy = self._spt(pos)
+        r_shadow = self._slen(22)
+        r_outline = self._slen(21)
+        r_face = self._slen(17)
+        shadow_off = self._slen(3.5)
+
+        if node_name == self.state.current_node:
+            pygame.draw.circle(self.screen, _lighten(AFFORD_COLOR, 110), (cx, cy), r_outline + self._slen(6))
+
+        pygame.draw.circle(self.screen, SHADOW_COLOR, (cx + shadow_off, cy + shadow_off * 1.4), r_shadow)
+        pygame.draw.circle(self.screen, OUTLINE_COLOR, (cx, cy), r_outline)
+        pygame.draw.circle(self.screen, (215, 205, 188), (cx, cy), r_face)
+        pygame.draw.circle(self.screen, OUTLINE_COLOR, (cx, cy), r_face, max(1, self._slen(1.5)))
+
+        ring_r = r_face * 0.42
+        offset = ring_r * 0.55
+        line_w = max(1, self._slen(2))
+        pygame.draw.circle(self.screen, (60, 95, 150), (cx - offset, cy), ring_r, line_w)
+        pygame.draw.circle(self.screen, (170, 60, 50), (cx + offset, cy), ring_r, line_w)
+
+        label = self._font(13, bold=True).render(_node_short_label(node_name), True, TEXT_COLOR)
+        lx, ly = self._spt((pos[0], pos[1] + 32))
+        self.screen.blit(label, label.get_rect(center=(lx, ly)))
+
     def _draw_station_icon(self, cx, cy, r, task_type):
         """A tiny task-specific glyph drawn inside the station's colored
         core, in a bright contrasting color: a lightning bolt (agility),
@@ -682,15 +768,26 @@ class GameGUI:
 
         self._draw_city_blocks()
 
-        # Station signposts, one per route, colored + iconed to match that route.
+        # Station signposts, one per route, colored + iconed to match that
+        # route -- skipped for lines with no station (Level 1's direct
+        # HOME -> UNIVERSITY routes).
         for i, route in enumerate(self.level.bus_routes):
+            if route.station is None:
+                continue
             station_pos = _map_point(*route.station, row_range, col_range, MAP_CONTENT_RECT)
             self._draw_station(station_pos, ROUTE_COLORS[i % len(ROUTE_COLORS)], route.task_type)
 
-        home_pos = _map_point(*self.level.start, row_range, col_range, MAP_CONTENT_RECT)
-        uni_pos = _map_point(*self.level.end, row_range, col_range, MAP_CONTENT_RECT)
-        self._draw_home_icon(home_pos)
-        self._draw_university_icon(uni_pos)
+        # Every node in the level: HOME and UNIVERSITY get their dedicated
+        # icons, any other node (levels 3-5's transfer hubs) gets the
+        # generic interchange icon.
+        for node_name, coord in self.level.nodes.items():
+            pos = _map_point(*coord, row_range, col_range, MAP_CONTENT_RECT)
+            if node_name == "HOME":
+                self._draw_home_icon(pos)
+            elif node_name == "UNIVERSITY":
+                self._draw_university_icon(pos)
+            else:
+                self._draw_hub_icon(pos, node_name)
 
     # -- drawing: panels ----------------------------------------------------
     def draw_status_bar(self):
@@ -698,9 +795,10 @@ class GameGUI:
         pygame.draw.rect(self.screen, PANEL_BG, self._srect(bar_rect))
         total_seconds = max(0, round(self.state.time_remaining * 60))
         minutes, seconds = divmod(total_seconds, 60)
-        text = f"CASH: {self.state.money} NIS  |  TIME: {minutes:02d}:{seconds:02d}"
+        text = (f"CASH: {self.state.money} NIS  |  TIME: {minutes:02d}:{seconds:02d}  |  "
+                f"AT: {_node_label(self.state.current_node)}")
         pos = self._spt((20, 12))
-        self.screen.blit(self._font(22, bold=True).render(text, True, TEXT_COLOR), pos)
+        self.screen.blit(self._font(19, bold=True).render(text, True, TEXT_COLOR), pos)
 
         hint = self._font(13).render("F11: toggle fullscreen", True, DIM_TEXT_COLOR)
         hpos = self._spt((BASE_WIDTH - 160, 18))
@@ -715,7 +813,8 @@ class GameGUI:
         x = BOTTOM_PANEL_RECT.x + 15
         y = BOTTOM_PANEL_RECT.y + 12
 
-        header = self._font(20, bold=True).render("STATION DISPLAY - LIVE DEPARTURES", True, TEXT_COLOR)
+        header_text = f"STATION DISPLAY - {_node_label(self.state.current_node).upper()} - LIVE DEPARTURES"
+        header = self._font(20, bold=True).render(header_text, True, TEXT_COLOR)
         self.screen.blit(header, self._spt((x, y)))
         y += 28
 
@@ -730,7 +829,7 @@ class GameGUI:
         inner_x = sign_rect.x + 14
         for i, r in enumerate(self.routes):
             row_y = sign_rect.y + i * row_height
-            fits = self.state.money >= r.price and self.state.time_remaining >= r.duration
+            fits = can_board(self.state, r)
             is_hovered = r is self.hovered_route
 
             # Fixed-size click zone kept in sync with the map: hovering this
@@ -743,10 +842,10 @@ class GameGUI:
                                   border_radius=self._slen(3))
 
             color = SIGN_TEXT_HOVER if is_hovered else (SIGN_TEXT_COLOR if fits else SIGN_TEXT_DIM)
-            next_bus = math.ceil(self._next_bus_minutes(r))
+            next_bus = next_bus_minutes(self.state, r)
             text = (f"{self._route_label(r):<11} NEXT BUS: {next_bus:>2} MIN   "
-                    f"DURATION: {r.duration:>2} MIN")
-            surf = self._font(17, bold=True, mono=True).render(text, True, color)
+                    f"DURATION: {r.duration:>2} MIN   PRICE: {r.price:>2} NIS")
+            surf = self._font(15, bold=True, mono=True).render(text, True, color)
             text_pos = self._spt((inner_x, row_y + row_height / 2 - 9))
             self.screen.blit(surf, text_pos)
 
@@ -787,25 +886,29 @@ class GameGUI:
         y = rect.y + 20
         title = self._font(24, bold=True).render("TRIP PLANNER - Full Route Metrics", True, TEXT_COLOR)
         self.screen.blit(title, self._spt((x, y)))
-        y += 38
+        y += 32
 
-        header = f"{'LINE':<12}{'DISTANCE':>11}{'DURATION':>11}{'FREQUENCY':>12}{'PRICE':>10}"
-        self.screen.blit(self._font(15, bold=True, mono=True).render(header, True, DIM_TEXT_COLOR),
+        at_line = self._font(15).render(f"Currently at: {_node_label(self.state.current_node)}", True, DIM_TEXT_COLOR)
+        self.screen.blit(at_line, self._spt((x, y)))
+        y += 28
+
+        header = f"{'LINE':<13}{'FROM':<11}{'TO':<11}{'DIST':>6}{'DUR':>6}{'NEXT':>6}{'PRICE':>7}"
+        self.screen.blit(self._font(14, bold=True, mono=True).render(header, True, DIM_TEXT_COLOR),
                           self._spt((x, y)))
-        y += 22
+        y += 20
         pygame.draw.line(self.screen, DIM_TEXT_COLOR, self._spt((x, y)), self._spt((rect.right - 24, y)),
                           max(1, self._slen(1)))
-        y += 10
+        y += 8
 
         for r in self.routes:
-            fits = self.state.money >= r.price and self.state.time_remaining >= r.duration
+            fits = can_board(self.state, r)
             color = AFFORD_COLOR if fits else DENY_COLOR
-            row = (f"{self._route_label(r):<12}{r.distance:>8} km{r.duration:>8} min"
-                   f"{r.frequency:>9} /day{r.price:>7} NIS")
-            self.screen.blit(self._font(15, mono=True).render(row, True, color), self._spt((x, y)))
-            y += 25
+            row = (f"{self._route_label(r):<13}{_node_short_label(r.origin):<11}{_node_short_label(r.destination):<11}"
+                   f"{r.distance:>6}{r.duration:>6}{next_bus_minutes(self.state, r):>6}{r.price:>7}")
+            self.screen.blit(self._font(14, mono=True).render(row, True, color), self._spt((x, y)))
+            y += 22
 
-        y += 12
+        y += 10
         pygame.draw.line(self.screen, DIM_TEXT_COLOR, self._spt((x, y)), self._spt((rect.right - 24, y)),
                           max(1, self._slen(1)))
         y += 16
@@ -836,37 +939,68 @@ class GameGUI:
             lines.append(current)
         return lines
 
-    def draw_overlay(self):
-        if not self.game_over_text:
-            return
-        text, color = self.game_over_text
+    def _draw_menu_button(self, base_rect, label, bg_color):
+        rect = self._srect(base_rect)
+        pygame.draw.rect(self.screen, bg_color, rect, border_radius=self._slen(10))
+        pygame.draw.rect(self.screen, OUTLINE_COLOR, rect, max(1, self._slen(2.5)), border_radius=self._slen(10))
+        surf = self._font(20, bold=True).render(label, True, (245, 245, 240))
+        self.screen.blit(surf, surf.get_rect(center=rect.center))
+        return rect
 
-        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 190))
-        self.screen.blit(overlay, (0, 0))
+    def draw_title_screen(self):
+        self.screen.fill(LETTERBOX_COLOR)
+        pygame.draw.rect(self.screen, WINDOW_BG, self._srect(pygame.Rect(0, 0, BASE_WIDTH, BASE_HEIGHT)))
 
-        font_big = self._font(34, bold=True)
-        max_width = (BASE_WIDTH - 80) * self.scale
-        lines = self._wrap_text(text, font_big, max_width)
-        line_height = font_big.get_linesize()
-        cx, cy = self.window_width // 2, self.window_height // 2
-        top = cy - (len(lines) * line_height) // 2
+        title_surf = self._font(46, bold=True).render(TITLE, True, TEXT_COLOR)
+        self.screen.blit(title_surf, title_surf.get_rect(center=self._spt((BASE_WIDTH // 2, 130))))
 
+        subtitle = self._font(17).render("A C-Sorting-Powered Bus Route Planning Game", True, DIM_TEXT_COLOR)
+        self.screen.blit(subtitle, subtitle.get_rect(center=self._spt((BASE_WIDTH // 2, 172))))
+
+        rules_font = self._font(16)
+        max_width = 600 * self.scale
+        lines = self._wrap_text(RULES_TEXT, rules_font, max_width)
+        line_height = rules_font.get_linesize()
+        cx = self._spt((BASE_WIDTH // 2, 0))[0]
+        top = self._spt((0, 230))[1]
         for i, line in enumerate(lines):
-            surf = font_big.render(line, True, color)
+            surf = rules_font.render(line, True, TEXT_COLOR)
             self.screen.blit(surf, surf.get_rect(center=(cx, top + i * line_height)))
 
-        hint = self._font(18).render("Close the window to exit.", True, (230, 230, 230))
-        hint_y = top + len(lines) * line_height + 20
-        self.screen.blit(hint, hint.get_rect(center=(cx, hint_y)))
+        self.start_button_rect = self._draw_menu_button(START_BUTTON_RECT, "START GAME", AFFORD_COLOR)
+
+    def draw_end_screen(self):
+        self.screen.fill(LETTERBOX_COLOR)
+        pygame.draw.rect(self.screen, WINDOW_BG, self._srect(pygame.Rect(0, 0, BASE_WIDTH, BASE_HEIGHT)))
+
+        won = self.run_result == "win"
+        text = "SUCCESS!" if won else "GAME OVER!"
+        color = AFFORD_COLOR if won else DENY_COLOR
+
+        title_surf = self._font(52, bold=True).render(text, True, color)
+        self.screen.blit(title_surf, title_surf.get_rect(center=self._spt((BASE_WIDTH // 2, 220))))
+
+        self.return_button_rect = self._draw_menu_button(RETURN_BUTTON_RECT, "RETURN TO MAIN MENU", _darken(PANEL_BG, 90))
 
     # -- events ------------------------------------------------------------
     def handle_event(self, event):
         if self.handle_window_event(event):
             return
-        if self.game_over_text is not None:
+
+        if self.screen_state == "title":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and self.start_button_rect.collidepoint(event.pos):
+                self.screen_state = "playing"
             return
 
+        if self.screen_state == "over":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and self.return_button_rect.collidepoint(event.pos):
+                self._start_new_game()
+                self.screen_state = "title"
+            return
+
+        # screen_state == "playing" from here on.
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
                 and self.trip_planner_tab_rect.collidepoint(event.pos):
             self.trip_planner_open = not self.trip_planner_open
@@ -899,18 +1033,24 @@ class GameGUI:
             for event in pygame.event.get():
                 self.handle_event(event)
 
-            self.advance_clock(dt_ms / 1000.0)
-            self._update_hover()
+            if self.screen_state == "playing":
+                self.advance_clock(dt_ms / 1000.0)
+                self._update_hover()
 
-            self.screen.fill(LETTERBOX_COLOR)
-            pygame.draw.rect(self.screen, WINDOW_BG, self._srect(pygame.Rect(0, 0, BASE_WIDTH, BASE_HEIGHT)))
-            self.draw_status_bar()
-            self.draw_map()
-            self.draw_trip_planner_tab()
-            self.draw_bottom_panel()
-            if self.trip_planner_open:
-                self.draw_trip_planner_modal()
-            self.draw_overlay()
+            if self.screen_state == "title":
+                self.draw_title_screen()
+            elif self.screen_state == "over":
+                self.draw_end_screen()
+            else:
+                self.screen.fill(LETTERBOX_COLOR)
+                pygame.draw.rect(self.screen, WINDOW_BG, self._srect(pygame.Rect(0, 0, BASE_WIDTH, BASE_HEIGHT)))
+                self.draw_status_bar()
+                self.draw_map()
+                self.draw_trip_planner_tab()
+                self.draw_bottom_panel()
+                if self.trip_planner_open:
+                    self.draw_trip_planner_modal()
+
             pygame.display.flip()
 
 
