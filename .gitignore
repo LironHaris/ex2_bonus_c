@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# C build artifacts
+*.so
+*.o
+build/
+quick_sort_visualizer
+
+# Editor / IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (none currently, but never worth risking)
+.env
