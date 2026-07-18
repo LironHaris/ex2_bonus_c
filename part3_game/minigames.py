@@ -3,8 +3,10 @@
 Each run_*_task(gui) is a small, self-contained, blocking pygame event loop:
 it owns drawing and input for the duration of the task and returns True
 (passed) or False (failed) once the player resolves it. Triggered from
-game.py right before a boarding attempt is finalized -- this module never
-touches engine.py/models.py/levels.py or GameState.
+game.py right before a boarding attempt is finalized. This module never
+calls engine.py/models.py/levels.py directly -- it only calls back into
+gui.advance_clock() every frame so the real-time countdown keeps running
+while a task is on screen, exactly like it does in game.py's main loop.
 
 Layout is authored in the same BASE_WIDTH x BASE_HEIGHT design space as
 game.py and drawn through the passed-in GameGUI's own scale/font/window-event
@@ -108,6 +110,9 @@ def run_agility_task(gui):
     while True:
         dt = gui.clock.tick(60) / 1000.0
         elapsed += dt
+        gui.advance_clock(dt)
+        if gui.game_over_text is not None:
+            return False
 
         for event in _pump(gui):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
@@ -161,7 +166,11 @@ def run_memory_task(gui):
     # -- phase 1: show the sequence --
     elapsed = 0.0
     while elapsed < 2.5:
-        elapsed += gui.clock.tick(60) / 1000.0
+        dt = gui.clock.tick(60) / 1000.0
+        elapsed += dt
+        gui.advance_clock(dt)
+        if gui.game_over_text is not None:
+            return False
         _pump(gui)
 
         _fill_backdrop(gui)
@@ -175,7 +184,11 @@ def run_memory_task(gui):
     # -- phase 2: hide --
     elapsed = 0.0
     while elapsed < 0.6:
-        elapsed += gui.clock.tick(60) / 1000.0
+        dt = gui.clock.tick(60) / 1000.0
+        elapsed += dt
+        gui.advance_clock(dt)
+        if gui.game_over_text is not None:
+            return False
         _pump(gui)
         _fill_backdrop(gui)
         hint = gui._font(18).render("...", True, DIM_TEXT_COLOR)
@@ -192,6 +205,11 @@ def run_memory_task(gui):
     ]
 
     while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.game_over_text is not None:
+            return False
+
         events = _pump(gui)
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -231,6 +249,11 @@ def run_thinking_task(gui):
     ]
 
     while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.game_over_text is not None:
+            return False
+
         events = _pump(gui)
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

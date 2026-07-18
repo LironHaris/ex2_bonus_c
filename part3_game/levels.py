@@ -16,16 +16,19 @@ LEVEL_1 = LevelConfig(
     end=UNIVERSITY,
     # Each route's single intermediate station is the first interior point on
     # its path; task_type cycles through the 3 mini-games across the 5 lines.
+    # Names are just lowercase color tags -- game.py maps each one to a
+    # display label ("Red Line", etc.) via its index in this list, which
+    # also matches game.py's ROUTE_COLORS order.
     bus_routes=[
-        BusRoute("line210", distance=80, duration=15, frequency=10, price=20,
+        BusRoute("redline", distance=80, duration=15, frequency=10, price=20,
                  path=[HOME, (0, 10), UNIVERSITY], station=(0, 10), task_type="agility"),
-        BusRoute("express40", distance=120, duration=12, frequency=5, price=45,
+        BusRoute("greenline", distance=120, duration=12, frequency=5, price=45,
                  path=[HOME, (2, 8), UNIVERSITY], station=(2, 8), task_type="memory"),
-        BusRoute("local5", distance=60, duration=25, frequency=20, price=10,
+        BusRoute("blueline", distance=60, duration=25, frequency=20, price=10,
                  path=[HOME, (-1, 5), (1, 12), UNIVERSITY], station=(-1, 5), task_type="thinking"),
-        BusRoute("nightride", distance=150, duration=20, frequency=30, price=35,
+        BusRoute("yellowline", distance=150, duration=20, frequency=30, price=35,
                  path=[HOME, (3, 6), (3, 15), UNIVERSITY], station=(3, 6), task_type="agility"),
-        BusRoute("campushopper", distance=90, duration=18, frequency=8, price=25,
+        BusRoute("purpleline", distance=90, duration=18, frequency=8, price=25,
                  path=[HOME, (1, 4), (0, 14), UNIVERSITY], station=(1, 4), task_type="memory"),
     ],
     reward_money=40,
