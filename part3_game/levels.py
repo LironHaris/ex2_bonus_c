@@ -13,11 +13,14 @@ game.py's ROUTE_COLORS/LINE_LABELS). Re-used across levels since each
 level's bus_routes list is its own namespace.
 
 Levels 1-2 are single-hop: every line goes straight from HOME to UNIVERSITY.
-Levels 3-5 (Advanced Grid Expansion) introduce transfer hubs -- nodes other
-than HOME/UNIVERSITY that some lines only depart from, so the player has to
-chain multiple lines together to cross the whole level. Level 3 also has
-mini-games (its own distinct set, see minigames.py's LEVEL_3_TASKS); levels
-4-5 stay routing-only, station/task_type None throughout.
+Levels 1-3 all have mini-games -- one route per task_type at minimum, so
+every category (agility/memory/thinking) has at least one valid path in
+each of those levels; see minigames.py for which concrete implementation
+each task_type actually runs on a given level. Levels 3-5 (Advanced Grid
+Expansion) additionally introduce transfer hubs -- nodes other than HOME/
+UNIVERSITY that some lines only depart from, so the player has to chain
+multiple lines together to cross the whole level. Levels 4-5 stay
+routing-only, station/task_type None throughout.
 """
 
 from models import BusRoute, LevelConfig
@@ -29,20 +32,20 @@ LEVEL_1_INTRO = LevelConfig(
     start="HOME",
     end="UNIVERSITY",
     nodes={"HOME": HOME, "UNIVERSITY": UNIVERSITY},
-    # Introductory level: every line drives straight from HOME to UNIVERSITY
-    # with no intermediate station and no mini-game -- station/task_type are
-    # both None, and game.py's attempt_board()/draw_map() special-case that
-    # to skip the station-task sequence entirely.
+    # Introductory level: every line still drives straight from HOME to
+    # UNIVERSITY, but each of the 3 lines now carries its own station stop
+    # -- one per task_type, so the player meets all three mini-game
+    # categories at least once before the tougher levels.
     bus_routes=[
         BusRoute("redline", distance=50, duration=10, frequency=3, price=15,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (0, 10), UNIVERSITY], station=(0, 10), task_type="agility"),
         BusRoute("greenline", distance=70, duration=14, frequency=4, price=25,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (-1, 10), UNIVERSITY], station=(-1, 10), task_type="memory"),
         BusRoute("blueline", distance=40, duration=12, frequency=2, price=5,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (1, 10), UNIVERSITY], station=(1, 10), task_type="thinking"),
     ],
     reward_money=20,
     reward_time=14,
@@ -76,10 +79,9 @@ LEVEL_2_ADVANCED = LevelConfig(
 )
 
 # -- Advanced Grid Expansion (levels 3-5): transfer hubs ---------------------
-# Level 3 additionally has mini-games -- a second, distinct set of
-# Agility/Memory/Thinking tasks from Level 2's (see minigames.py's
-# LEVEL_3_TASKS): rapid targets, missing number, and flag trivia. Levels 4-5
-# stay routing-only (station/task_type None throughout).
+# Level 3 keeps mini-games (same task_type categories, same underlying
+# implementations as Levels 1-2 -- see minigames.py). Levels 4-5 stay
+# routing-only (station/task_type None throughout).
 
 _L3_HOME = (0, 0)
 _L3_CENTRAL = (0, 10)
