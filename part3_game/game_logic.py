@@ -17,7 +17,7 @@ from engine import (
     board_route, can_board, enter_level, is_stuck, next_bus_minutes, routes_from, sort_routes, tick,
 )
 from levels import LEVELS
-from minigames import run_task
+from minigames import run_task, show_level_summary
 
 from game_constants import DELAY_EVENTS, GAME_MINUTES_PER_REAL_SECOND, LINE_LABELS, MAP_CONTENT_RECT, ROUTE_COLORS
 from game_geometry import map_point, node_label, point_segment_distance, route_bounds
@@ -109,6 +109,10 @@ class GameLogicMixin:
 
         reached_end = route.destination == self.level.end
         cleared_level = self.level
+        # Captured now, while self.level still is cleared_level -- _route_label
+        # looks the route up by position in self.level.bus_routes, which would
+        # raise once self.level moves on to the next level below.
+        boarded_label = self._route_label(route)
         self.state = board_route(self.state, self.level, route)
 
         # Random Bus Delay System (Jerusalem traffic theme) -- undocumented
@@ -121,18 +125,29 @@ class GameLogicMixin:
                 return
 
         if reached_end:
-            self.message = (
-                f"Boarded {self._route_label(route)}! Level cleared. "
-                f"+{cleared_level.reward_money} NIS, +{cleared_level.reward_time} time."
-            )
             if self.state.level_index >= len(LEVELS):
                 self._trigger_game_over("win")
                 return
+
+            # Advance to the new level/position *before* the summary screen,
+            # so its own advance_clock()-driven stuck-check (dawdling on
+            # "PROCEED TO NEXT LEVEL" still costs real time) evaluates the
+            # level the player is actually about to play, not the one they
+            # just left (whose end node has no outgoing routes at all).
             self.level = LEVELS[self.state.level_index]
             self.state = enter_level(self.state, self.level)
+
+            show_level_summary(self, self.state.level_index)
+            if self.screen_state != "playing":
+                return
+
+            self.message = (
+                f"Boarded {boarded_label}! Level cleared. "
+                f"+{cleared_level.reward_money} NIS, +{cleared_level.reward_time} time."
+            )
         else:
             self.message = (
-                f"Boarded {self._route_label(route)}! Now at {node_label(self.state.current_node)} "
+                f"Boarded {boarded_label}! Now at {node_label(self.state.current_node)} "
                 f"-- find a connecting line."
             )
 

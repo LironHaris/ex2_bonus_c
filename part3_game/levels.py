@@ -15,8 +15,9 @@ level's bus_routes list is its own namespace.
 Levels 1-2 are single-hop: every line goes straight from HOME to UNIVERSITY.
 Levels 3-5 (Advanced Grid Expansion) introduce transfer hubs -- nodes other
 than HOME/UNIVERSITY that some lines only depart from, so the player has to
-chain multiple lines together to cross the whole level. No mini-games in
-levels 3-5; station/task_type stay None throughout.
+chain multiple lines together to cross the whole level. Level 3 also has
+mini-games (its own distinct set, see minigames.py's LEVEL_3_TASKS); levels
+4-5 stay routing-only, station/task_type None throughout.
 """
 
 from models import BusRoute, LevelConfig
@@ -74,7 +75,11 @@ LEVEL_2_ADVANCED = LevelConfig(
     reward_time=20,
 )
 
-# -- Advanced Grid Expansion (levels 3-5): transfer hubs, no mini-games -----
+# -- Advanced Grid Expansion (levels 3-5): transfer hubs ---------------------
+# Level 3 additionally has mini-games -- a second, distinct set of
+# Agility/Memory/Thinking tasks from Level 2's (see minigames.py's
+# LEVEL_3_TASKS): rapid targets, missing number, and flag trivia. Levels 4-5
+# stay routing-only (station/task_type None throughout).
 
 _L3_HOME = (0, 0)
 _L3_CENTRAL = (0, 10)
@@ -87,22 +92,22 @@ LEVEL_3_JUNCTION = LevelConfig(
     bus_routes=[
         BusRoute("redline", distance=45, duration=10, frequency=3, price=12,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L3_HOME, (0, 5), _L3_CENTRAL], station=None, task_type=None),
+                 path=[_L3_HOME, (0, 5), _L3_CENTRAL], station=(0, 5), task_type="agility"),
         BusRoute("greenline", distance=55, duration=11, frequency=2, price=18,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L3_HOME, (-2, 5), _L3_CENTRAL], station=None, task_type=None),
+                 path=[_L3_HOME, (-2, 5), _L3_CENTRAL], station=(-2, 5), task_type="memory"),
         BusRoute("blueline", distance=50, duration=10, frequency=3, price=14,
                  origin="CENTRAL_STATION", destination="UNIVERSITY",
-                 path=[_L3_CENTRAL, (0, 15), _L3_UNI], station=None, task_type=None),
+                 path=[_L3_CENTRAL, (0, 15), _L3_UNI], station=(0, 15), task_type="thinking"),
         BusRoute("yellowline", distance=60, duration=13, frequency=4, price=20,
                  origin="CENTRAL_STATION", destination="UNIVERSITY",
-                 path=[_L3_CENTRAL, (2, 15), _L3_UNI], station=None, task_type=None),
+                 path=[_L3_CENTRAL, (2, 15), _L3_UNI], station=(2, 15), task_type="agility"),
         BusRoute("purpleline", distance=140, duration=24, frequency=5, price=48,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[_L3_HOME, (3, 10), _L3_UNI], station=None, task_type=None),
+                 path=[_L3_HOME, (3, 10), _L3_UNI], station=(3, 10), task_type="memory"),
         BusRoute("orangeline", distance=130, duration=28, frequency=2, price=30,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[_L3_HOME, (-3, 10), _L3_UNI], station=None, task_type=None),
+                 path=[_L3_HOME, (-3, 10), _L3_UNI], station=(-3, 10), task_type="thinking"),
     ],
     reward_money=45,
     reward_time=32,
