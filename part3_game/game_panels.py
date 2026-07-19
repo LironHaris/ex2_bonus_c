@@ -30,20 +30,32 @@ class PanelsMixin:
 
         self.debug_admin_rect = self._draw_small_button(
             ADMIN_MODE_RECT, f"ADMIN MODE: {'ON' if self.admin_mode else 'OFF'}", active=self.admin_mode)
-        self.debug_prev_rect = self._draw_small_button(DEBUG_PREV_RECT, "PREV LVL")
-        self.debug_next_rect = self._draw_small_button(DEBUG_NEXT_RECT, "NEXT LVL")
+        # PREV/NEXT LVL are only clickable while Admin Mode is on -- grayed
+        # out and inert otherwise (see game.py's handle_event, which guards
+        # the actual _debug_change_level() calls behind self.admin_mode too).
+        self.debug_prev_rect = self._draw_small_button(DEBUG_PREV_RECT, "PREV LVL", enabled=self.admin_mode)
+        self.debug_next_rect = self._draw_small_button(DEBUG_NEXT_RECT, "NEXT LVL", enabled=self.admin_mode)
 
         hint = self._font(11).render("F11: toggle fullscreen", True, DIM_TEXT_COLOR)
         hpos = self._spt((BASE_WIDTH - 180, 30))
         self.screen.blit(hint, hpos)
 
-    def _draw_small_button(self, base_rect, label, active=False):
+    def _draw_small_button(self, base_rect, label, active=False, enabled=True):
         rect = self._srect(base_rect)
-        bg_color = AFFORD_COLOR if active else darken(PANEL_BG, 40)
-        border_color = lighten(AFFORD_COLOR, 60) if active else OUTLINE_COLOR
+        if not enabled:
+            bg_color = darken(PANEL_BG, 55)
+            border_color = darken(OUTLINE_COLOR, 30)
+            text_color = DIM_TEXT_COLOR
+        elif active:
+            bg_color = AFFORD_COLOR
+            border_color = lighten(AFFORD_COLOR, 60)
+            text_color = WINDOW_BG
+        else:
+            bg_color = darken(PANEL_BG, 40)
+            border_color = OUTLINE_COLOR
+            text_color = TEXT_COLOR
         pygame.draw.rect(self.screen, bg_color, rect, border_radius=self._slen(4))
         pygame.draw.rect(self.screen, border_color, rect, max(1, self._slen(1.5)), border_radius=self._slen(4))
-        text_color = WINDOW_BG if active else TEXT_COLOR
         surf = self._font(11, bold=True).render(label, True, text_color)
         self.screen.blit(surf, surf.get_rect(center=rect.center))
         return rect
@@ -169,14 +181,30 @@ class PanelsMixin:
                           max(1, self._slen(1)))
         y += 16
 
+        # Clickable "Sort by..." buttons -- the only way to trigger a sort;
+        # rects are recorded (real screen space) for handle_event to hit-test
+        # against, same pattern as self.route_rows.
+        self.sort_button_rects = []
+        button_h = 30
         for label, field in zip(SORT_LABELS, SORT_FIELDS):
-            color = AFFORD_COLOR if self.sort_by == field else TEXT_COLOR
-            self.screen.blit(self._font(17, bold=self.sort_by == field).render(label, True, color),
-                              self._spt((x, y)))
-            y += 24
+            active = self.sort_by == field
+            base_rect = pygame.Rect(x, y, rect.right - 24 - x, button_h)
+            screen_rect = self._srect(base_rect)
+            bg_color = AFFORD_COLOR if active else darken(PANEL_BG, 30)
+            border_color = lighten(AFFORD_COLOR, 60) if active else OUTLINE_COLOR
+            pygame.draw.rect(self.screen, bg_color, screen_rect, border_radius=self._slen(6))
+            pygame.draw.rect(self.screen, border_color, screen_rect, max(1, self._slen(1.5)),
+                              border_radius=self._slen(6))
+            text_color = WINDOW_BG if active else TEXT_COLOR
+            label_surf = self._font(16, bold=active).render(label, True, text_color)
+            self.screen.blit(label_surf,
+                              label_surf.get_rect(midleft=(screen_rect.x + self._slen(12), screen_rect.centery)))
+            self.sort_button_rects.append((screen_rect, field))
+            y += button_h + 8
 
-        y += 12
-        hint = self._font(14).render("Press ESC, or click the Trip Planner tab, to close.", True, DIM_TEXT_COLOR)
+        y += 6
+        hint = self._font(14).render(
+            "Click a Sort by... button above, or ESC / the Trip Planner tab, to close.", True, DIM_TEXT_COLOR)
         self.screen.blit(hint, self._spt((x, y)))
 
     @staticmethod

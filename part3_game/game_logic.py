@@ -204,6 +204,22 @@ class GameLogicMixin:
         self.trip_planner_open = False
         self.hovered_route = None
 
+    def _route_at_point(self, pos):
+        """Route (if any) whose road on the map passes within click/hover
+        threshold of `pos` (real screen space). Checks every route in the
+        level regardless of origin -- callers that gate boarding by the
+        player's current position (game.py's map-click handling) apply that
+        restriction separately, so Admin Mode can bypass it there."""
+        row_range, col_range = route_bounds(self.level)
+        threshold = self._slen(13)
+        for route in self.level.bus_routes:
+            points = [self._spt(map_point(r, c, row_range, col_range, MAP_CONTENT_RECT))
+                      for r, c in route.path]
+            for a, b in zip(points, points[1:]):
+                if point_segment_distance(pos, a, b) <= threshold:
+                    return route
+        return None
+
     def _update_hover(self):
         """Recompute which route (if any) the mouse is over -- either its row
         in the bottom panel or its road on the map -- so draw_map() and
@@ -217,14 +233,4 @@ class GameLogicMixin:
                 self.hovered_route = route
                 return
 
-        row_range, col_range = route_bounds(self.level)
-        threshold = self._slen(13)
-        for route in self.level.bus_routes:
-            points = [self._spt(map_point(r, c, row_range, col_range, MAP_CONTENT_RECT))
-                      for r, c in route.path]
-            for a, b in zip(points, points[1:]):
-                if point_segment_distance(mouse_pos, a, b) <= threshold:
-                    self.hovered_route = route
-                    return
-
-        self.hovered_route = None
+        self.hovered_route = self._route_at_point(mouse_pos)

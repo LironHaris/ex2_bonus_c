@@ -130,6 +130,24 @@ def run_shape_sequence_task(gui):
 
     # -- phase 2: the player repeats the sequence by clicking the tiles --
     progress = 0
+
+    def _flash_clicked_tile(index):
+        """Brief highlight on the just-clicked tile, identical styling to
+        the demo phase's flash, so a click gets instant visual feedback
+        before the correctness check resolves (and possibly ends the task).
+        Returns False if the game ended mid-flash."""
+        elapsed = 0.0
+        while elapsed < 0.2:
+            dt = gui.clock.tick(60) / 1000.0
+            elapsed += dt
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
+            _pump(gui)
+            _draw_tiles(f"Now repeat it! ({progress}/{len(sequence)})", highlight_index=index)
+            pygame.display.flip()
+        return True
+
     while True:
         dt = gui.clock.tick(60) / 1000.0
         gui.advance_clock(dt)
@@ -141,6 +159,8 @@ def run_shape_sequence_task(gui):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for i, rect in enumerate(tile_rects):
                     if gui._srect(rect).collidepoint(event.pos):
+                        if not _flash_clicked_tile(i):
+                            return False
                         if SHAPE_NAMES[i] != sequence[progress]:
                             return False
                         progress += 1

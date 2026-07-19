@@ -41,8 +41,7 @@ from models import GameState  # noqa: E402
 from game_animation import AnimationMixin  # noqa: E402
 from game_constants import (  # noqa: E402
     ADMIN_MODE_RECT, BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, LETTERBOX_COLOR, RETURN_BUTTON_RECT,
-    SORT_KEYS, STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT,
-    WINDOW_BG,
+    STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, WINDOW_BG,
 )
 from game_logic import GameLogicMixin  # noqa: E402
 from game_map_render import MapRendererMixin  # noqa: E402
@@ -61,6 +60,7 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
         self._recompute_scale()
 
         self.route_rows = []  # [(rect, BusRoute), ...] for click handling (real screen space)
+        self.sort_button_rects = []  # [(rect, sort_field), ...] -- Trip Planner's clickable Sort by... buttons
         self.trip_planner_tab_rect = self._srect(TRIP_PLANNER_TAB_RECT)
         self.start_button_rect = self._srect(START_BUTTON_RECT)
         self.return_button_rect = self._srect(RETURN_BUTTON_RECT)
@@ -172,13 +172,16 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
 
         # screen_state == "playing" from here on. Debug level-jump/Admin
         # Mode buttons work regardless of any other overlay state (Trip
-        # Planner, etc.).
+        # Planner, etc.). PREV/NEXT LVL are inert unless Admin Mode is on --
+        # drawn grayed out to match (see PanelsMixin.draw_status_bar).
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.debug_next_rect.collidepoint(event.pos):
-                self._debug_change_level(1)
+                if self.admin_mode:
+                    self._debug_change_level(1)
                 return
             if self.debug_prev_rect.collidepoint(event.pos):
-                self._debug_change_level(-1)
+                if self.admin_mode:
+                    self._debug_change_level(-1)
                 return
             if self.debug_admin_rect.collidepoint(event.pos):
                 self._toggle_admin_mode()
@@ -191,14 +194,16 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
 
         if self.trip_planner_open:
             # Sorting (the real C bubble/quick sort) can only be triggered
-            # from inside the Trip Planner; everything else is ignored while
-            # it's open except closing it.
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.trip_planner_open = False
-                elif event.key in SORT_KEYS:
-                    self.apply_sort(SORT_KEYS[event.key])
+            # from inside the Trip Planner, via its clickable Sort by...
+            # buttons; everything else is ignored while it's open except
+            # closing it (ESC, or clicking outside the modal).
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.trip_planner_open = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for rect, field in self.sort_button_rects:
+                    if rect.collidepoint(event.pos):
+                        self.apply_sort(field)
+                        return
                 if not self._srect(TRIP_PLANNER_MODAL_RECT).collidepoint(event.pos):
                     self.trip_planner_open = False
             return
@@ -208,6 +213,16 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
                 if rect.collidepoint(event.pos):
                     self.attempt_board(route)
                     return
+
+            # Clicking a bus line's road directly on the map boards it just
+            # like clicking its row on the Electronic Sign -- but the map
+            # shows every route in the level, including ones that don't
+            # depart from here, so standard mode still gates on that;
+            # Admin Mode lifts the gate (see GameLogicMixin._route_at_point).
+            map_route = self._route_at_point(event.pos)
+            if map_route is not None and (self.admin_mode or map_route.origin == self.state.current_node):
+                self.attempt_board(map_route)
+                return
 
     def run(self):
         while True:

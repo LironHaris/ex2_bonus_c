@@ -206,13 +206,18 @@ def run_linear_equation_task(gui):
 
 
 # ---------------------------------------------------------------------------
-# Level 4: Advanced Riddles pool (Fibonacci / Digit Circle Count / System of
-# 2 equations) -- one riddle type picked at random per attempt.
+# Level 4: Advanced Riddles pool -- a System of 2 Equations riddle, or one of
+# two anonymized numeric-sequence puzzles (their underlying rule is never
+# named in the UI, only the raw numbers are shown -- see run_advanced_riddle_task).
 # ---------------------------------------------------------------------------
+
+_SEQUENCE_PROMPT = "Complete the sequence by choosing the next number: {sequence}, ...?"
+
 
 def _generate_fibonacci_riddle():
     """A Fibonacci-style sequence from two random positive seeds (each term
-    is the sum of the previous two); the player names the next term."""
+    is the sum of the previous two); the player names the next term. The
+    underlying rule is never stated -- only the raw numbers are shown."""
     a = random.randint(1, 4)
     b = random.randint(1, 4)
     seq = [a, b]
@@ -231,13 +236,14 @@ def _generate_fibonacci_riddle():
     options = [str(answer)] + [str(d) for d in distractors]
     random.shuffle(options)
     sequence_text = ", ".join(str(n) for n in seq)
-    question_text = f"Fibonacci Sequence -- what comes next? {sequence_text}, ...?"
+    question_text = _SEQUENCE_PROMPT.format(sequence=sequence_text)
     return question_text, options, str(answer)
 
 
-def _digit_circle_count(number_str):
+def _digit_loop_count(number_str):
     """0, 6, and 9 each have exactly 1 closed loop; 8 has exactly 2; every
-    other digit has 0."""
+    other digit has 0. Internal only -- this rule is never shown to the
+    player, it just drives the hidden pattern below."""
     count = 0
     for ch in number_str:
         if ch in ("0", "6", "9"):
@@ -247,30 +253,68 @@ def _digit_circle_count(number_str):
     return count
 
 
+def _make_number_with_loop_count(target_count):
+    """Build a random digit string whose total closed-loop count (per
+    _digit_loop_count) is exactly target_count, padded with a few
+    non-loop filler digits for visual variety."""
+    loop_digits_1 = ["0", "6", "9"]  # 1 loop each
+    loop_digits_2 = ["8"]            # 2 loops each
+    filler_digits = ["1", "2", "3", "4", "5", "7"]  # 0 loops each
+
+    digits = []
+    remaining = target_count
+    while remaining > 0:
+        if remaining >= 2 and random.random() < 0.5:
+            digits.append(random.choice(loop_digits_2))
+            remaining -= 2
+        else:
+            digits.append(random.choice(loop_digits_1))
+            remaining -= 1
+    for _ in range(random.randint(0, 2)):
+        digits.append(random.choice(filler_digits))
+    random.shuffle(digits)
+
+    number_str = "".join(digits)
+    if number_str[0] == "0" and len(number_str) > 1:
+        # Cosmetic only: rotate a non-zero digit to the front so the number
+        # doesn't display with a leading zero.
+        for i, ch in enumerate(number_str):
+            if ch != "0":
+                number_str = number_str[i] + number_str[:i] + number_str[i + 1:]
+                break
+    return number_str
+
+
 def _generate_digit_circle_riddle():
-    """A random multi-digit number; the player counts total closed loops
-    across its digits per the stated rule."""
-    number_str = "".join(str(random.randint(0, 9)) for _ in range(random.randint(4, 6)))
-    answer = _digit_circle_count(number_str)
+    """A sequence of numbers whose hidden rule is that each term's total
+    closed-loop count is one more than the previous term's. The rule itself
+    is never shown -- only the raw numbers -- so the player must infer the
+    pattern purely from the sequence, same as the Fibonacci-style puzzle."""
+    start_count = random.randint(1, 2)
+    term_counts = [start_count, start_count + 1, start_count + 2]
+    terms = [_make_number_with_loop_count(c) for c in term_counts]
+
+    answer_count = start_count + 3
+    answer = _make_number_with_loop_count(answer_count)
 
     distractors = set()
-    for offset in (-2, -1, 1, 2, 3):
-        candidate = answer + offset
-        if candidate >= 0 and candidate != answer:
-            distractors.add(candidate)
+    for offset in (-1, 1, 2):
+        candidate_count = answer_count + offset
+        if candidate_count >= 1:
+            candidate = _make_number_with_loop_count(candidate_count)
+            if candidate != answer:
+                distractors.add(candidate)
     distractors = list(distractors)[:3]
     while len(distractors) < 3:
-        candidate = random.randint(0, answer + 5)
+        candidate = _make_number_with_loop_count(random.randint(1, 6))
         if candidate != answer and candidate not in distractors:
             distractors.append(candidate)
 
-    options = [str(answer)] + [str(d) for d in distractors]
+    options = [answer] + distractors
     random.shuffle(options)
-    question_text = (
-        "Digit Circle Count -- digits 0, 6, 9 each have 1 closed loop, digit 8 has 2, "
-        f"all others have 0. How many total loops are in the number {number_str}?"
-    )
-    return question_text, options, str(answer)
+    sequence_text = ", ".join(terms)
+    question_text = _SEQUENCE_PROMPT.format(sequence=sequence_text)
+    return question_text, options, answer
 
 
 def _generate_system_riddle():

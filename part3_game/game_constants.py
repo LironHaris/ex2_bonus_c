@@ -159,9 +159,8 @@ START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, 440, 220, 56)
 RETURN_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 130, 380, 260, 54)
 
 SORT_FIELDS = ["name", "distance", "duration"]
-SORT_KEYS = {pygame.K_1: "name", pygame.K_2: "distance", pygame.K_3: "duration"}
 SORT_LABELS = [
-    "Press 1: Sort by Name (Bubble Sort)",
-    "Press 2: Sort by Distance (Quick Sort)",
-    "Press 3: Sort by Duration (Quick Sort)",
+    "Sort by Name (Bubble Sort)",
+    "Sort by Distance (Quick Sort)",
+    "Sort by Duration (Quick Sort)",
 ]
