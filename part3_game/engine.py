@@ -102,15 +102,17 @@ def enter_level(state: GameState, level: LevelConfig) -> GameState:
     return replace(state, current_node=level.start)
 
 
-def board_route(state: GameState, level: LevelConfig, route: BusRoute) -> GameState:
+def board_route(state: GameState, level: LevelConfig, route: BusRoute, bypass_checks: bool = False) -> GameState:
     """Board `route`: deduct its price plus (wait-for-next-departure + travel
     duration) in time, and move the player to route.destination. Only once
     that destination is the level's end node does this also apply the
     level's reward and advance level_index -- intermediate hops in a
     multi-transfer level are otherwise "free" of level-clear side effects.
     Raises ValueError if the gates (money/time) aren't met -- callers should
-    check can_board() first."""
-    if not can_board(state, route):
+    check can_board() first. bypass_checks=True skips that gate entirely
+    (money/time_remaining may go negative) -- used only by the GUI's
+    developer-only Admin Mode, never by normal play."""
+    if not bypass_checks and not can_board(state, route):
         raise ValueError(f"cannot board {route.name!r}: fails money/time gate")
     wait = next_bus_minutes(state, route)
     reached_end = route.destination == level.end

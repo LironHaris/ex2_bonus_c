@@ -125,6 +125,12 @@ TRIP_PLANNER_MODAL_RECT = pygame.Rect(90, 60, 620, 460)
 DEBUG_PREV_RECT = pygame.Rect(BASE_WIDTH - 180, 4, 82, 20)
 DEBUG_NEXT_RECT = pygame.Rect(BASE_WIDTH - 92, 4, 82, 20)
 
+# Toggle button just to the left of the level-jump buttons -- while active,
+# attempt_board() skips the money/time affordability gate entirely, so any
+# route (including multi-transfer chains) can be boarded freely for testing
+# (see GameLogicMixin._toggle_admin_mode/attempt_board).
+ADMIN_MODE_RECT = pygame.Rect(BASE_WIDTH - 288, 4, 100, 20)
+
 # -- Random Bus Delay System (Jerusalem traffic theme) -----------------------
 # Undocumented on purpose -- not mentioned in RULES_TEXT. Only active in
 # levels 4-5 (LEVELS[3]/LEVELS[4]); see GameLogicMixin._maybe_trigger_delay.

@@ -8,8 +8,8 @@ import pygame
 from engine import can_board, next_bus_minutes
 
 from game_constants import (
-    AFFORD_COLOR, BASE_HEIGHT, BASE_WIDTH, BOTTOM_PANEL_RECT, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, DENY_COLOR,
-    DIM_TEXT_COLOR, LETTERBOX_COLOR, OUTLINE_COLOR, PANEL_BG, RETURN_BUTTON_RECT, RULES_TEXT, SIGN_BG,
+    ADMIN_MODE_RECT, AFFORD_COLOR, BASE_HEIGHT, BASE_WIDTH, BOTTOM_PANEL_RECT, DEBUG_NEXT_RECT, DEBUG_PREV_RECT,
+    DENY_COLOR, DIM_TEXT_COLOR, LETTERBOX_COLOR, OUTLINE_COLOR, PANEL_BG, RETURN_BUTTON_RECT, RULES_TEXT, SIGN_BG,
     SIGN_BORDER_COLOR, SIGN_TEXT_COLOR, SIGN_TEXT_DIM, SIGN_TEXT_HOVER, SORT_FIELDS, SORT_LABELS, START_BUTTON_RECT,
     TEXT_COLOR, TITLE, TOP_PANEL_HEIGHT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, WINDOW_BG,
 )
@@ -28,6 +28,8 @@ class PanelsMixin:
         pos = self._spt((20, 12))
         self.screen.blit(self._font(19, bold=True).render(text, True, TEXT_COLOR), pos)
 
+        self.debug_admin_rect = self._draw_small_button(
+            ADMIN_MODE_RECT, f"ADMIN MODE: {'ON' if self.admin_mode else 'OFF'}", active=self.admin_mode)
         self.debug_prev_rect = self._draw_small_button(DEBUG_PREV_RECT, "PREV LVL")
         self.debug_next_rect = self._draw_small_button(DEBUG_NEXT_RECT, "NEXT LVL")
 
@@ -35,11 +37,14 @@ class PanelsMixin:
         hpos = self._spt((BASE_WIDTH - 180, 30))
         self.screen.blit(hint, hpos)
 
-    def _draw_small_button(self, base_rect, label):
+    def _draw_small_button(self, base_rect, label, active=False):
         rect = self._srect(base_rect)
-        pygame.draw.rect(self.screen, darken(PANEL_BG, 40), rect, border_radius=self._slen(4))
-        pygame.draw.rect(self.screen, OUTLINE_COLOR, rect, max(1, self._slen(1.5)), border_radius=self._slen(4))
-        surf = self._font(11, bold=True).render(label, True, TEXT_COLOR)
+        bg_color = AFFORD_COLOR if active else darken(PANEL_BG, 40)
+        border_color = lighten(AFFORD_COLOR, 60) if active else OUTLINE_COLOR
+        pygame.draw.rect(self.screen, bg_color, rect, border_radius=self._slen(4))
+        pygame.draw.rect(self.screen, border_color, rect, max(1, self._slen(1.5)), border_radius=self._slen(4))
+        text_color = WINDOW_BG if active else TEXT_COLOR
+        surf = self._font(11, bold=True).render(label, True, text_color)
         self.screen.blit(surf, surf.get_rect(center=rect.center))
         return rect
 

@@ -1,8 +1,9 @@
-"""Agility-category station mini-game: Rapid Targets / Whack-a-Mole
-(Levels 1, 2, and 3), plus the level-completion summary screen (kept here
-rather than in a fourth file, since neither mg_thinking.py nor mg_memory.py
-is a better thematic fit and it's a similarly small, self-contained
-blocking overlay).
+"""Agility-category station mini-games: Single Timing Bar (Level 2), Rapid
+Targets / Whack-a-Mole (Level 3), and Dual Timing Bars (Level 4), plus the
+level-completion summary screen (kept here rather than in a fourth file,
+since neither mg_thinking.py nor mg_memory.py is a better thematic fit and
+it's a similarly small, self-contained blocking overlay). Level 1 has no
+Agility task at all (no mini-games whatsoever).
 
 See minigames.py for the task_type + level -> function dispatch. Same
 blocking-loop pattern as mg_thinking.py/mg_memory.py: owns drawing and
@@ -31,6 +32,11 @@ GREEN_ZONE = (60, 170, 80)
 SUMMARY_TITLE_COLOR = (140, 230, 150)
 PROCEED_BUTTON_COLOR = GREEN_ZONE
 
+RED_ZONE = (200, 60, 50)
+YELLOW_ZONE = (225, 190, 60)
+NEEDLE_COLOR = (235, 232, 225)
+BAR_BORDER = (20, 18, 16)
+
 
 def _fill_backdrop(gui):
     """Full-window dark backdrop for a mini-game, independent of the map's
@@ -46,7 +52,113 @@ def _pump(gui):
 
 
 # ---------------------------------------------------------------------------
-# Levels 1, 2 & 3: Agility Task (Rapid Targets)
+# Shared timing-bar building blocks (Level 2's single bar and Level 4's dual
+# bars both use these).
+# ---------------------------------------------------------------------------
+
+# Fractional [start, end) bounds of each zone along a bar, left to right:
+# red - yellow - green (the sweet spot) - yellow - red.
+BAR_ZONES = [
+    (0.0, 0.2, RED_ZONE),
+    (0.2, 0.4, YELLOW_ZONE),
+    (0.4, 0.6, GREEN_ZONE),
+    (0.6, 0.8, YELLOW_ZONE),
+    (0.8, 1.0, RED_ZONE),
+]
+
+
+class _TimingBar:
+    """A needle that sweeps back and forth across the bar at a constant
+    speed, bouncing off each end; the player wants it resting in the middle
+    green sweet spot. Independently-paced/phased bars drift in and out of
+    alignment with each other."""
+
+    def __init__(self, speed):
+        self.pos = random.uniform(0.0, 1.0)
+        self.direction = random.choice([-1, 1])
+        self.speed = speed  # fraction of the bar's width per second
+
+    def update(self, dt):
+        self.pos += self.direction * self.speed * dt
+        if self.pos >= 1.0:
+            self.pos, self.direction = 1.0, -1
+        elif self.pos <= 0.0:
+            self.pos, self.direction = 0.0, 1
+
+    @property
+    def in_green(self):
+        return 0.4 <= self.pos <= 0.6
+
+
+def _draw_timing_bar(gui, rect, bar):
+    screen_rect = gui._srect(rect)
+    for start, end, color in BAR_ZONES:
+        zone_rect = pygame.Rect(
+            screen_rect.left + int(start * screen_rect.width), screen_rect.top,
+            max(1, int((end - start) * screen_rect.width)), screen_rect.height,
+        )
+        pygame.draw.rect(gui.screen, color, zone_rect)
+    pygame.draw.rect(gui.screen, BAR_BORDER, screen_rect, gui._slen(2))
+
+    needle_x = screen_rect.left + int(bar.pos * screen_rect.width)
+    pygame.draw.line(
+        gui.screen, NEEDLE_COLOR,
+        (needle_x, screen_rect.top - gui._slen(6)), (needle_x, screen_rect.bottom + gui._slen(6)),
+        gui._slen(4),
+    )
+
+
+def _bar_press_triggered(gui):
+    """True if this frame's events include a left click or SPACE press --
+    the universal "lock it in" trigger shared by both timing-bar tasks
+    (position/target of the click doesn't matter, only its timing)."""
+    for event in _pump(gui):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Level 2: Single Timing Bar
+# ---------------------------------------------------------------------------
+
+SINGLE_BAR_RECT = pygame.Rect(BASE_WIDTH // 2 - 150, 280, 300, 44)
+
+
+def run_single_timing_bar_task(gui):
+    """One needle sweeps back and forth across a single bar; the player
+    presses SPACE or clicks (anywhere) to lock it in. There's no timeout --
+    the background level clock keeps ticking, but this task itself only
+    resolves the instant the player actually presses: win if the needle is
+    in the green sweet spot at that moment, lose otherwise."""
+    bar = _TimingBar(speed=0.6)
+
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+        bar.update(dt)
+
+        if _bar_press_triggered(gui):
+            return bar.in_green
+
+        _fill_backdrop(gui)
+        title = gui._font(26, bold=True).render("AGILITY TASK - Timing Bar", True, TEXT_COLOR)
+        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
+        hint = gui._font(18).render(
+            "Press SPACE or click when the needle is in the green zone!", True, DIM_TEXT_COLOR)
+        gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
+
+        _draw_timing_bar(gui, SINGLE_BAR_RECT, bar)
+
+        pygame.display.flip()
+
+
+# ---------------------------------------------------------------------------
+# Level 3: Rapid Targets / Whack-a-Mole
 # ---------------------------------------------------------------------------
 
 def run_whackamole_task(gui):
@@ -97,6 +209,51 @@ def run_whackamole_task(gui):
             return False
 
     return True
+
+
+# ---------------------------------------------------------------------------
+# Level 4: Dual Timing Bars
+# ---------------------------------------------------------------------------
+
+BAR_W, BAR_H = 300, 44
+BAR_RECTS = [
+    pygame.Rect(BASE_WIDTH // 2 - 320, 280, BAR_W, BAR_H),
+    pygame.Rect(BASE_WIDTH // 2 + 20, 280, BAR_W, BAR_H),
+]
+
+
+def run_dual_timing_bars_task(gui):
+    """Two independently-sweeping timing bars, side by side, each with its
+    own green sweet spot. The player presses SPACE or clicks (anywhere) to
+    lock both bars in at once -- there is no target to click and no
+    timeout. The player is completely safe until they actually attempt a
+    press: a loss is triggered ONLY if they press while at least one bar is
+    outside its green zone; winning requires both bars to be in green at
+    the instant of the press."""
+    bars = [_TimingBar(speed=0.55), _TimingBar(speed=0.8)]
+
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+        for bar in bars:
+            bar.update(dt)
+
+        if _bar_press_triggered(gui):
+            return all(bar.in_green for bar in bars)
+
+        _fill_backdrop(gui)
+        title = gui._font(26, bold=True).render("AGILITY TASK - Dual Timing Bars", True, TEXT_COLOR)
+        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
+        hint = gui._font(18).render(
+            "Press SPACE or click ONLY when BOTH needles are in the green zone!", True, DIM_TEXT_COLOR)
+        gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
+
+        for bar, rect in zip(bars, BAR_RECTS):
+            _draw_timing_bar(gui, rect, bar)
+
+        pygame.display.flip()
 
 
 # ---------------------------------------------------------------------------

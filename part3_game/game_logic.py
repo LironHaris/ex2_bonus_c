@@ -1,6 +1,7 @@
 """State-transition logic for the Part C route-economy game's GUI: sorting,
 the real-time clock, boarding a line (including the Random Bus Delay System),
-win/loss detection, the debug level-jump buttons, and map-hover tracking.
+win/loss detection, the debug level-jump buttons, Admin Mode (bypasses the
+money/time boarding gate for testing), and map-hover tracking.
 
 GameLogicMixin is combined with the other *Mixin classes into game.py's
 GameGUI; every method here still just uses `self` as if it were defined
@@ -63,7 +64,7 @@ class GameLogicMixin:
         self.screen_state = "over"
 
     def attempt_board(self, route):
-        if not can_board(self.state, route):
+        if not self.admin_mode and not can_board(self.state, route):
             self.message = f"Can't board {self._route_label(route)}: check money/time."
             return
 
@@ -103,7 +104,8 @@ class GameLogicMixin:
         # Re-check right before actually deducting: the wait-for-next-bus
         # component of the cost can grow while the animation/task above was
         # playing out, so a boarding that was valid on click can still fail.
-        if not can_board(self.state, route):
+        # Admin Mode skips this gate entirely, same as the initial check above.
+        if not self.admin_mode and not can_board(self.state, route):
             self._trigger_game_over("lose")
             return
 
@@ -113,7 +115,7 @@ class GameLogicMixin:
         # looks the route up by position in self.level.bus_routes, which would
         # raise once self.level moves on to the next level below.
         boarded_label = self._route_label(route)
-        self.state = board_route(self.state, self.level, route)
+        self.state = board_route(self.state, self.level, route, bypass_checks=self.admin_mode)
 
         # Random Bus Delay System (Jerusalem traffic theme) -- undocumented
         # mechanic active only in the busier Advanced Grid Expansion levels
@@ -170,8 +172,20 @@ class GameLogicMixin:
         self._check_stuck()
 
     def _check_stuck(self):
+        if self.admin_mode:
+            return
         if self.screen_state == "playing" and is_stuck(self.state, self.level):
             self._trigger_game_over("lose")
+
+    def _toggle_admin_mode(self):
+        """Developer-only: flip the ADMIN MODE flag. While active,
+        attempt_board() skips both money/time affordability checks and
+        _check_stuck()'s lose-by-stranded detection, so any route --
+        including multi-transfer chains -- can be boarded freely regardless
+        of remaining time or cash, for testing routing in isolation."""
+        self.admin_mode = not self.admin_mode
+        state_word = "ENABLED" if self.admin_mode else "DISABLED"
+        self.message = f"[DEBUG] Admin Mode {state_word}."
 
     def _debug_change_level(self, delta):
         """Developer-only: jump straight to the next/previous level and

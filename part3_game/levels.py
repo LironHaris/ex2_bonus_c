@@ -13,14 +13,16 @@ game.py's ROUTE_COLORS/LINE_LABELS). Re-used across levels since each
 level's bus_routes list is its own namespace.
 
 Levels 1-2 are single-hop: every line goes straight from HOME to UNIVERSITY.
-Levels 1-3 all have mini-games -- one route per task_type at minimum, so
-every category (agility/memory/thinking) has at least one valid path in
-each of those levels; see minigames.py for which concrete implementation
-each task_type actually runs on a given level. Levels 3-5 (Advanced Grid
-Expansion) additionally introduce transfer hubs -- nodes other than HOME/
-UNIVERSITY that some lines only depart from, so the player has to chain
-multiple lines together to cross the whole level. Levels 4-5 stay
-routing-only, station/task_type None throughout.
+Level 1 is intentionally mini-game-free (station/task_type None throughout)
+-- a plain introductory level with exactly 3 direct lines. Levels 2-4 all
+have mini-games -- one route per task_type at minimum, so every category
+(agility/memory/thinking) has at least one valid path in each of those
+levels; see minigames.py for which concrete implementation each task_type
+actually runs on a given level. Levels 3-5 (Advanced Grid Expansion)
+additionally introduce transfer hubs -- nodes other than HOME/UNIVERSITY
+that some lines only depart from, so the player has to chain multiple lines
+together to cross the whole level. Level 5 alone stays routing-only,
+station/task_type None throughout.
 """
 
 from models import BusRoute, LevelConfig
@@ -32,20 +34,20 @@ LEVEL_1_INTRO = LevelConfig(
     start="HOME",
     end="UNIVERSITY",
     nodes={"HOME": HOME, "UNIVERSITY": UNIVERSITY},
-    # Introductory level: every line still drives straight from HOME to
-    # UNIVERSITY, but each of the 3 lines now carries its own station stop
-    # -- one per task_type, so the player meets all three mini-game
-    # categories at least once before the tougher levels.
+    # Introductory level: every line drives straight from HOME to UNIVERSITY
+    # with no intermediate station and no mini-game -- station/task_type are
+    # both None, and game.py's attempt_board()/draw_map() special-case that
+    # to skip the station-task sequence entirely.
     bus_routes=[
         BusRoute("redline", distance=50, duration=10, frequency=3, price=15,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, (0, 10), UNIVERSITY], station=(0, 10), task_type="agility"),
+                 path=[HOME, UNIVERSITY], station=None, task_type=None),
         BusRoute("greenline", distance=70, duration=14, frequency=4, price=25,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, (-1, 10), UNIVERSITY], station=(-1, 10), task_type="memory"),
+                 path=[HOME, UNIVERSITY], station=None, task_type=None),
         BusRoute("blueline", distance=40, duration=12, frequency=2, price=5,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, (1, 10), UNIVERSITY], station=(1, 10), task_type="thinking"),
+                 path=[HOME, UNIVERSITY], station=None, task_type=None),
     ],
     reward_money=20,
     reward_time=14,
@@ -79,8 +81,8 @@ LEVEL_2_ADVANCED = LevelConfig(
 )
 
 # -- Advanced Grid Expansion (levels 3-5): transfer hubs ---------------------
-# Level 3 keeps mini-games (same task_type categories, same underlying
-# implementations as Levels 1-2 -- see minigames.py). Levels 4-5 stay
+# Levels 3-4 keep mini-games (same task_type categories; Level 4 swaps in
+# its own harder implementations -- see minigames.py). Level 5 alone stays
 # routing-only (station/task_type None throughout).
 
 _L3_HOME = (0, 0)
@@ -124,28 +126,31 @@ LEVEL_4_CROSSTOWN = LevelConfig(
     start="HOME",
     end="UNIVERSITY",
     nodes={"HOME": _L4_HOME, "CENTRAL_STATION": _L4_CENTRAL, "OLD_CITY": _L4_OLDCITY, "UNIVERSITY": _L4_UNI},
+    # Each route's station is its path's interior point; task_type cycles
+    # through all 3 categories so every one has at least one valid route --
+    # see minigames.py for Level 4's harder concrete implementations.
     bus_routes=[
         BusRoute("redline", distance=40, duration=10, frequency=2, price=10,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L4_HOME, (0, 4), _L4_CENTRAL], station=None, task_type=None),
+                 path=[_L4_HOME, (0, 4), _L4_CENTRAL], station=(0, 4), task_type="agility"),
         BusRoute("greenline", distance=55, duration=11, frequency=3, price=16,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L4_HOME, (-2, 4), _L4_CENTRAL], station=None, task_type=None),
+                 path=[_L4_HOME, (-2, 4), _L4_CENTRAL], station=(-2, 4), task_type="memory"),
         BusRoute("blueline", distance=42, duration=10, frequency=3, price=12,
                  origin="CENTRAL_STATION", destination="OLD_CITY",
-                 path=[_L4_CENTRAL, (0, 11), _L4_OLDCITY], station=None, task_type=None),
+                 path=[_L4_CENTRAL, (0, 11), _L4_OLDCITY], station=(0, 11), task_type="thinking"),
         BusRoute("yellowline", distance=58, duration=13, frequency=2, price=18,
                  origin="CENTRAL_STATION", destination="OLD_CITY",
-                 path=[_L4_CENTRAL, (2, 11), _L4_OLDCITY], station=None, task_type=None),
+                 path=[_L4_CENTRAL, (2, 11), _L4_OLDCITY], station=(2, 11), task_type="agility"),
         BusRoute("purpleline", distance=38, duration=10, frequency=3, price=10,
                  origin="OLD_CITY", destination="UNIVERSITY",
-                 path=[_L4_OLDCITY, (0, 18), _L4_UNI], station=None, task_type=None),
+                 path=[_L4_OLDCITY, (0, 18), _L4_UNI], station=(0, 18), task_type="memory"),
         BusRoute("orangeline", distance=50, duration=12, frequency=4, price=16,
                  origin="OLD_CITY", destination="UNIVERSITY",
-                 path=[_L4_OLDCITY, (-2, 18), _L4_UNI], station=None, task_type=None),
+                 path=[_L4_OLDCITY, (-2, 18), _L4_UNI], station=(-2, 18), task_type="thinking"),
         BusRoute("tealline", distance=110, duration=22, frequency=4, price=35,
                  origin="HOME", destination="OLD_CITY",
-                 path=[_L4_HOME, (3, 8), _L4_OLDCITY], station=None, task_type=None),
+                 path=[_L4_HOME, (3, 8), _L4_OLDCITY], station=(3, 8), task_type="agility"),
     ],
     reward_money=50,
     reward_time=48,

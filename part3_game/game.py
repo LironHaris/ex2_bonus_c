@@ -17,7 +17,7 @@ manageable size:
   - game_geometry.py   -- stateless math/formatting helpers.
   - game_logic.py       -- GameLogicMixin: sorting, the clock, boarding a
                             line (incl. the random delay system), win/loss,
-                            debug level-jump, map-hover tracking.
+                            debug level-jump, Admin Mode, map-hover tracking.
   - game_animation.py   -- AnimationMixin: the bus-driving animation and the
                             traffic-delay popup (both blocking sub-loops).
   - game_map_render.py  -- MapRendererMixin: buildings, roads, and every
@@ -40,8 +40,9 @@ from models import GameState  # noqa: E402
 
 from game_animation import AnimationMixin  # noqa: E402
 from game_constants import (  # noqa: E402
-    BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, LETTERBOX_COLOR, RETURN_BUTTON_RECT, SORT_KEYS,
-    STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, WINDOW_BG,
+    ADMIN_MODE_RECT, BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, LETTERBOX_COLOR, RETURN_BUTTON_RECT,
+    SORT_KEYS, STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT,
+    WINDOW_BG,
 )
 from game_logic import GameLogicMixin  # noqa: E402
 from game_map_render import MapRendererMixin  # noqa: E402
@@ -65,6 +66,12 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
         self.return_button_rect = self._srect(RETURN_BUTTON_RECT)
         self.debug_prev_rect = self._srect(DEBUG_PREV_RECT)
         self.debug_next_rect = self._srect(DEBUG_NEXT_RECT)
+        self.debug_admin_rect = self._srect(ADMIN_MODE_RECT)
+
+        # Developer-only: while True, attempt_board() boards any route for
+        # free (bypasses money/time), toggled via the ADMIN MODE button --
+        # see GameLogicMixin._toggle_admin_mode.
+        self.admin_mode = False
 
         self._start_new_game()
         self.screen_state = "title"  # "title" | "playing" | "over" -- title overrides the "playing" _start_new_game() sets
@@ -163,14 +170,18 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
                 self.screen_state = "title"
             return
 
-        # screen_state == "playing" from here on. Debug level-jump buttons
-        # work regardless of any other overlay state (Trip Planner, etc.).
+        # screen_state == "playing" from here on. Debug level-jump/Admin
+        # Mode buttons work regardless of any other overlay state (Trip
+        # Planner, etc.).
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.debug_next_rect.collidepoint(event.pos):
                 self._debug_change_level(1)
                 return
             if self.debug_prev_rect.collidepoint(event.pos):
                 self._debug_change_level(-1)
+                return
+            if self.debug_admin_rect.collidepoint(event.pos):
+                self._toggle_admin_mode()
                 return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
