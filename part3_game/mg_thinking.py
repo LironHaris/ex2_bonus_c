@@ -34,10 +34,14 @@ FLAG_BARS = {
     "Germany": [(0, 0, 0), (221, 0, 0), (255, 206, 0)],
     "Belgium": [(0, 0, 0), (255, 213, 0), (237, 41, 57)],
     "Netherlands": [(174, 28, 40), (255, 255, 255), (33, 70, 139)],
+    "Ireland": [(22, 155, 76), (255, 255, 255), (255, 136, 53)],
+    "Austria": [(237, 41, 57), (255, 255, 255), (237, 41, 57)],
+    "Ukraine": [(65, 155, 219), (255, 213, 0)],
 }
 FLAG_ORIENTATION = {
     "France": "vertical", "Italy": "vertical", "Germany": "horizontal",
     "Belgium": "vertical", "Netherlands": "horizontal",
+    "Ireland": "vertical", "Austria": "horizontal", "Ukraine": "horizontal",
 }
 FLAG_BORDER = (20, 18, 16)
 JAPAN_BG = (255, 255, 255)
@@ -84,7 +88,10 @@ def _draw_flag(gui, name, rect):
     pygame.draw.rect(gui.screen, FLAG_BORDER, screen_rect, max(1, gui._slen(2)))
 
 
-FLAG_COUNTRIES = ["France", "Italy", "Germany", "Japan", "Belgium", "Netherlands"]
+FLAG_COUNTRIES = [
+    "France", "Italy", "Germany", "Japan", "Belgium", "Netherlands",
+    "Ireland", "Austria", "Ukraine",
+]
 
 
 def run_flag_trivia_task(gui):

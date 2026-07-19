@@ -14,15 +14,18 @@ level's bus_routes list is its own namespace.
 
 Levels 1-2 are single-hop: every line goes straight from HOME to UNIVERSITY.
 Level 1 is intentionally mini-game-free (station/task_type None throughout)
--- a plain introductory level with exactly 3 direct lines. Levels 2-4 all
+-- a plain introductory level with exactly 3 direct lines. Levels 2-5 all
 have mini-games -- one route per task_type at minimum, so every category
 (agility/memory/thinking) has at least one valid path in each of those
 levels; see minigames.py for which concrete implementation each task_type
-actually runs on a given level. Levels 3-5 (Advanced Grid Expansion)
-additionally introduce transfer hubs -- nodes other than HOME/UNIVERSITY
-that some lines only depart from, so the player has to chain multiple lines
-together to cross the whole level. Level 5 alone stays routing-only,
-station/task_type None throughout.
+actually runs on a given level. Level 5's stations are the "Ultimate
+Challenge" -- every one of them, regardless of its own task_type, triggers
+a randomized back-to-back combo of 3 mini-games (one Memory + one Agility +
+one Thinking, each from a different earlier level's pool) instead of a
+single task; see minigames.py's run_ultimate_challenge_task. Levels 3-5
+(Advanced Grid Expansion) additionally introduce transfer hubs -- nodes
+other than HOME/UNIVERSITY that some lines only depart from, so the player
+has to chain multiple lines together to cross the whole level.
 """
 
 from models import BusRoute, LevelConfig
@@ -82,8 +85,9 @@ LEVEL_2_ADVANCED = LevelConfig(
 
 # -- Advanced Grid Expansion (levels 3-5): transfer hubs ---------------------
 # Levels 3-4 keep mini-games (same task_type categories; Level 4 swaps in
-# its own harder implementations -- see minigames.py). Level 5 alone stays
-# routing-only (station/task_type None throughout).
+# its own harder implementations -- see minigames.py). Level 5's stations
+# all trigger the Ultimate Challenge 3-mini-game combo instead of a single
+# task, regardless of their own task_type (see minigames.py).
 
 _L3_HOME = (0, 0)
 _L3_CENTRAL = (0, 10)
@@ -169,31 +173,36 @@ LEVEL_5_METRO = LevelConfig(
         "HOME": _L5_HOME, "CENTRAL_STATION": _L5_CENTRAL, "MARKET_JCT": _L5_MARKET,
         "OLD_CITY": _L5_OLDCITY, "UNIVERSITY": _L5_UNI,
     },
+    # Every route now carries a station -- Level 5's "Ultimate Challenge":
+    # whichever task_type a given route has, minigames.py's Level 5 override
+    # ignores it and always runs the same 3-mini-game combo (see
+    # run_ultimate_challenge_task), so task_type here only picks the
+    # station's map icon, cycled through all 3 categories for variety.
     bus_routes=[
         BusRoute("redline", distance=35, duration=10, frequency=2, price=10,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L5_HOME, (0, 3), _L5_CENTRAL], station=None, task_type=None),
+                 path=[_L5_HOME, (0, 3), _L5_CENTRAL], station=(0, 3), task_type="agility"),
         BusRoute("greenline", distance=50, duration=10, frequency=3, price=16,
                  origin="HOME", destination="CENTRAL_STATION",
-                 path=[_L5_HOME, (-2, 3), _L5_CENTRAL], station=None, task_type=None),
+                 path=[_L5_HOME, (-2, 3), _L5_CENTRAL], station=(-2, 3), task_type="memory"),
         BusRoute("blueline", distance=32, duration=10, frequency=2, price=10,
                  origin="CENTRAL_STATION", destination="MARKET_JCT",
-                 path=[_L5_CENTRAL, (0, 9), _L5_MARKET], station=None, task_type=None),
+                 path=[_L5_CENTRAL, (0, 9), _L5_MARKET], station=(0, 9), task_type="thinking"),
         BusRoute("yellowline", distance=30, duration=10, frequency=2, price=10,
                  origin="MARKET_JCT", destination="OLD_CITY",
-                 path=[_L5_MARKET, (0, 15), _L5_OLDCITY], station=None, task_type=None),
+                 path=[_L5_MARKET, (0, 15), _L5_OLDCITY], station=(0, 15), task_type="agility"),
         BusRoute("purpleline", distance=36, duration=10, frequency=2, price=12,
                  origin="OLD_CITY", destination="UNIVERSITY",
-                 path=[_L5_OLDCITY, (0, 20), _L5_UNI], station=None, task_type=None),
+                 path=[_L5_OLDCITY, (0, 20), _L5_UNI], station=(0, 20), task_type="memory"),
         BusRoute("orangeline", distance=48, duration=11, frequency=3, price=18,
                  origin="OLD_CITY", destination="UNIVERSITY",
-                 path=[_L5_OLDCITY, (-2, 20), _L5_UNI], station=None, task_type=None),
+                 path=[_L5_OLDCITY, (-2, 20), _L5_UNI], station=(-2, 20), task_type="thinking"),
         BusRoute("tealline", distance=120, duration=22, frequency=4, price=40,
                  origin="CENTRAL_STATION", destination="UNIVERSITY",
-                 path=[_L5_CENTRAL, (3, 15), _L5_UNI], station=None, task_type=None),
+                 path=[_L5_CENTRAL, (3, 15), _L5_UNI], station=(3, 15), task_type="agility"),
         BusRoute("pinkline", distance=80, duration=15, frequency=3, price=28,
                  origin="HOME", destination="MARKET_JCT",
-                 path=[_L5_HOME, (3, 6), _L5_MARKET], station=None, task_type=None),
+                 path=[_L5_HOME, (3, 6), _L5_MARKET], station=(3, 6), task_type="memory"),
     ],
     reward_money=0,
     reward_time=0,
