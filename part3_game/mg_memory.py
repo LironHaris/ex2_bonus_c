@@ -216,11 +216,61 @@ def run_shape_sequence_task(gui):
 # Level 3: Missing Number
 # ---------------------------------------------------------------------------
 
+MISSING_NUMBER_START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 140, 380, 280, 60)
+START_BUTTON_COLOR = (60, 170, 80)
+
+
+def _run_missing_number_instructions(gui):
+    """Pre-game instruction overlay: the 6 numbers stay hidden and the
+    memorization timer does not start until the player clicks START TASK --
+    only then does run_missing_number_task begin phase 1. The global
+    background clock (gui.advance_clock) keeps ticking normally throughout,
+    same as every other blocking overlay in this game; only the mini-game's
+    OWN reveal/timer is held back. Returns False if the game ended while
+    this screen was up."""
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+
+        started = False
+        for event in _pump(gui):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and gui._srect(MISSING_NUMBER_START_BUTTON_RECT).collidepoint(event.pos):
+                started = True
+
+        _fill_backdrop(gui)
+        title = gui._font(30, bold=True).render("MEMORY CHALLENGE", True, TEXT_COLOR)
+        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
+        line1 = gui._font(18).render(
+            "6 random numbers will appear with mixed sizes and angles.", True, DIM_TEXT_COLOR)
+        gui.screen.blit(line1, line1.get_rect(center=gui._spt((BASE_WIDTH // 2, 240))))
+        line2 = gui._font(18).render(
+            "Study them to deduce which 7th number is missing!", True, DIM_TEXT_COLOR)
+        gui.screen.blit(line2, line2.get_rect(center=gui._spt((BASE_WIDTH // 2, 268))))
+
+        button_rect = gui._srect(MISSING_NUMBER_START_BUTTON_RECT)
+        pygame.draw.rect(gui.screen, START_BUTTON_COLOR, button_rect, border_radius=gui._slen(10))
+        pygame.draw.rect(gui.screen, TEXT_COLOR, button_rect, gui._slen(2), border_radius=gui._slen(10))
+        label = gui._font(22, bold=True).render("START TASK", True, (250, 250, 245))
+        gui.screen.blit(label, label.get_rect(center=button_rect.center))
+
+        _draw_admin_skip_button(gui)
+        pygame.display.flip()
+
+        if started:
+            return True
+
+
 def run_missing_number_task(gui):
     """6 of the digits 1-7 are scattered on screen (random size + rotation)
     for 3 seconds; the player must then pick out the one digit that was
     never shown, from 4 choices (the missing digit plus 3 real distractors
-    that genuinely were on screen)."""
+    that genuinely were on screen). Gated behind a static pre-game
+    instruction overlay (_run_missing_number_instructions) -- the numbers
+    never render and the memorization timer never starts until the player
+    clicks START TASK there."""
     pool = list(range(1, 8))  # {1, 2, 3, 4, 5, 6, 7}
     missing = random.choice(pool)
     shown = [n for n in pool if n != missing]
@@ -231,6 +281,9 @@ def run_missing_number_task(gui):
     angles = [random.uniform(-45, 45) for _ in shown]
 
     try:
+        if not _run_missing_number_instructions(gui):
+            return False
+
         # -- phase 1: show the 6 numbers for 3 seconds --
         elapsed = 0.0
         while elapsed < 3.0:
@@ -321,18 +374,21 @@ def run_missing_number_task(gui):
 
 def _draw_cup(gui, x, y):
     """rect is in BASE space; the cup is a plain trapezoid + rim strip --
-    drawn from pygame primitives only. The ball (if any) is drawn separately
-    by the caller, on top of or beneath the cups as the scene requires."""
+    drawn from pygame primitives only, oriented DOWNWARD (narrow closed
+    point at the top, wide open rim resting on the table at the bottom) like
+    a traditional street shell-game cup, so it visually reads as covering
+    whatever is underneath it. The ball (if any) is drawn separately by the
+    caller, on top of or beneath the cups as the scene requires."""
     rect = pygame.Rect(int(x - CUP_W / 2), int(y - CUP_H / 2), CUP_W, CUP_H)
     screen_rect = gui._srect(rect)
     pygame.draw.polygon(gui.screen, CUP_COLOR, [
-        (screen_rect.left, screen_rect.top),
-        (screen_rect.right, screen_rect.top),
-        (screen_rect.centerx + gui._slen(CUP_W * 0.28), screen_rect.bottom),
-        (screen_rect.centerx - gui._slen(CUP_W * 0.28), screen_rect.bottom),
+        (screen_rect.centerx - gui._slen(CUP_W * 0.28), screen_rect.top),
+        (screen_rect.centerx + gui._slen(CUP_W * 0.28), screen_rect.top),
+        (screen_rect.right, screen_rect.bottom),
+        (screen_rect.left, screen_rect.bottom),
     ])
     pygame.draw.rect(gui.screen, CUP_RIM_COLOR,
-                      (screen_rect.left, screen_rect.top, screen_rect.width, gui._slen(10)))
+                      (screen_rect.left, screen_rect.bottom - gui._slen(10), screen_rect.width, gui._slen(10)))
 
 
 def _draw_ball(gui, pos):

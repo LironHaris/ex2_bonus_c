@@ -198,15 +198,66 @@ def run_single_timing_bar_task(gui):
 # Level 3: Rapid Targets / Whack-a-Mole
 # ---------------------------------------------------------------------------
 
+WHACKAMOLE_START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 140, 380, 280, 60)
+
+
+def _run_whackamole_instructions(gui):
+    """Pre-game instruction overlay: the 5-target spawning sequence and its
+    per-target timer stay completely paused/hidden behind this static screen
+    until the player clicks START TASK -- only then does run_whackamole_task
+    start spawning circles. The global background clock (gui.advance_clock)
+    keeps ticking normally throughout, same as every other blocking overlay
+    in this game; only the mini-game's OWN target timer is held back.
+    Returns once START TASK is clicked (Admin Mode's SKIP TASK, handled by
+    _pump, unwinds past this via _AdminSkipTask same as any other phase)."""
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+
+        started = False
+        for event in _pump(gui):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and gui._srect(WHACKAMOLE_START_BUTTON_RECT).collidepoint(event.pos):
+                started = True
+
+        _fill_backdrop(gui)
+        title = gui._font(30, bold=True).render("AGILITY CHALLENGE", True, TEXT_COLOR)
+        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 200))))
+        instructions = gui._font(18).render(
+            "5 target circles will appear rapidly one after another. Click them as fast as you can!",
+            True, DIM_TEXT_COLOR)
+        gui.screen.blit(instructions, instructions.get_rect(center=gui._spt((BASE_WIDTH // 2, 260))))
+
+        button_rect = gui._srect(WHACKAMOLE_START_BUTTON_RECT)
+        pygame.draw.rect(gui.screen, GREEN_ZONE, button_rect, border_radius=gui._slen(10))
+        pygame.draw.rect(gui.screen, TEXT_COLOR, button_rect, gui._slen(2), border_radius=gui._slen(10))
+        label = gui._font(22, bold=True).render("START TASK", True, (250, 250, 245))
+        gui.screen.blit(label, label.get_rect(center=button_rect.center))
+
+        _draw_admin_skip_button(gui)
+        pygame.display.flip()
+
+        if started:
+            return True
+
+
 def run_whackamole_task(gui):
     """5 circular targets, one at a time, each at a random position with its
     own tight countdown (shown as a shrinking ring). Miss any one -- either
     by not clicking it in time or running out of the level's own clock --
-    and the task fails; all 5 hit in time passes it."""
+    and the task fails; all 5 hit in time passes it. Gated behind a static
+    pre-game instruction overlay (_run_whackamole_instructions) -- circles
+    never spawn and the per-target timer never starts until the player
+    clicks START TASK there."""
     target_r = 34  # BASE-space radius
     time_limit_per_target = 1.4
 
     try:
+        if not _run_whackamole_instructions(gui):
+            return False
+
         for index in range(5):
             cx = random.uniform(120, BASE_WIDTH - 120)
             cy = random.uniform(190, 460)
