@@ -201,9 +201,6 @@ class TutorialMixin:
             self.screen.blit(surf, self._spt((rect.x + 16, ly)))
             ly += body_font.get_linesize()
 
-        pygame.draw.line(self.screen, DIM_TEXT_COLOR, self._spt((rect.x + 16, TUTORIAL_CAPTION_DIVIDER_Y)),
-                          self._spt((rect.right - 16, TUTORIAL_CAPTION_DIVIDER_Y)), max(1, self._slen(1)))
-
         skip_surf = self._font(12).render("ESC / Skip Tutorial", True, DIM_TEXT_COLOR)
         skip_rect = skip_surf.get_rect()
         skip_rect.midleft = self._spt((rect.x + 16, TUTORIAL_CAPTION_DIVIDER_Y + 20))
