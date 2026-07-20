@@ -25,6 +25,30 @@ TEXT_COLOR = (235, 232, 225)
 DIM_TEXT_COLOR = (180, 176, 168)
 BUTTON_BG = (60, 56, 50)
 
+# Admin Mode's SKIP TASK button -- drawn on every frame of every task below
+# while gui.admin_mode is on, bottom-right corner. Admin Mode no longer
+# auto-bypasses mini-games (they always launch and must be played normally);
+# this button is the explicit, player-triggered way to instantly pass one.
+ADMIN_SKIP_RECT = pygame.Rect(BASE_WIDTH - 190, 540, 170, 42)
+ADMIN_SKIP_BG = (120, 50, 40)
+ADMIN_SKIP_BORDER = (235, 180, 90)
+
+
+class _AdminSkipTask(Exception):
+    """Raised by _pump() when Admin Mode's SKIP TASK button is clicked, to
+    unwind out of a task's blocking loop in one step and count as a pass --
+    caught once at the top of each run_*_task()."""
+
+
+def _draw_admin_skip_button(gui):
+    if not gui.admin_mode:
+        return
+    rect = gui._srect(ADMIN_SKIP_RECT)
+    pygame.draw.rect(gui.screen, ADMIN_SKIP_BG, rect, border_radius=gui._slen(8))
+    pygame.draw.rect(gui.screen, ADMIN_SKIP_BORDER, rect, gui._slen(2), border_radius=gui._slen(8))
+    label = gui._font(15, bold=True).render("SKIP TASK (ADMIN)", True, ADMIN_SKIP_BORDER)
+    gui.screen.blit(label, label.get_rect(center=rect.center))
+
 # Flags are drawn from plain pygame primitives (rects/a circle) -- no image
 # assets. Each entry is the list of bar colors; orientation says whether
 # they're read left-to-right or top-to-bottom.
@@ -55,10 +79,19 @@ def _fill_backdrop(gui):
 
 
 def _pump(gui):
-    """Drain the event queue, handling window management first. Returns the
-    remaining (non window-management) events for task-specific handling."""
+    """Drain the event queue, handling window management first, then Admin
+    Mode's SKIP TASK button (raises _AdminSkipTask if clicked). Returns the
+    remaining events for task-specific handling."""
     events = pygame.event.get()
-    return [e for e in events if not gui.handle_window_event(e)]
+    remaining = []
+    for e in events:
+        if gui.handle_window_event(e):
+            continue
+        if gui.admin_mode and e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 \
+                and gui._srect(ADMIN_SKIP_RECT).collidepoint(e.pos):
+            raise _AdminSkipTask()
+        remaining.append(e)
+    return remaining
 
 
 # ---------------------------------------------------------------------------
@@ -110,35 +143,39 @@ def run_flag_trivia_task(gui):
         for i in range(len(choices))
     ]
 
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
+    try:
+        while True:
+            dt = gui.clock.tick(60) / 1000.0
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
 
-        events = _pump(gui)
-        for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for rect, choice in zip(base_rects, choices):
-                    if gui._srect(rect).collidepoint(event.pos):
-                        return choice == answer
+            events = _pump(gui)
+            for event in events:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, choice in zip(base_rects, choices):
+                        if gui._srect(rect).collidepoint(event.pos):
+                            return choice == answer
 
-        _fill_backdrop(gui)
-        title = gui._font(26, bold=True).render("THINKING TASK - Flag Trivia", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 80))))
-        hint = gui._font(18).render("Which country does this flag belong to?", True, DIM_TEXT_COLOR)
-        gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 115))))
+            _fill_backdrop(gui)
+            title = gui._font(26, bold=True).render("THINKING TASK - Flag Trivia", True, TEXT_COLOR)
+            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 80))))
+            hint = gui._font(18).render("Which country does this flag belong to?", True, DIM_TEXT_COLOR)
+            gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 115))))
 
-        _draw_flag(gui, answer, flag_rect)
+            _draw_flag(gui, answer, flag_rect)
 
-        for rect, choice in zip(base_rects, choices):
-            screen_rect = gui._srect(rect)
-            pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
-            pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
-            text = gui._font(20, bold=True).render(choice, True, TEXT_COLOR)
-            gui.screen.blit(text, text.get_rect(center=screen_rect.center))
+            for rect, choice in zip(base_rects, choices):
+                screen_rect = gui._srect(rect)
+                pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
+                pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
+                text = gui._font(20, bold=True).render(choice, True, TEXT_COLOR)
+                gui.screen.blit(text, text.get_rect(center=screen_rect.center))
 
-        pygame.display.flip()
+            _draw_admin_skip_button(gui)
+            pygame.display.flip()
+    except _AdminSkipTask:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -183,33 +220,37 @@ def run_linear_equation_task(gui):
         for i in range(len(options))
     ]
 
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
+    try:
+        while True:
+            dt = gui.clock.tick(60) / 1000.0
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
 
-        events = _pump(gui)
-        for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for rect, value in zip(base_rects, options):
-                    if gui._srect(rect).collidepoint(event.pos):
-                        return value == answer
+            events = _pump(gui)
+            for event in events:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, value in zip(base_rects, options):
+                        if gui._srect(rect).collidepoint(event.pos):
+                            return value == answer
 
-        _fill_backdrop(gui)
-        title = gui._font(26, bold=True).render("THINKING TASK - Linear Equation", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
-        eq = gui._font(28, bold=True).render(equation_text, True, TEXT_COLOR)
-        gui.screen.blit(eq, eq.get_rect(center=gui._spt((BASE_WIDTH // 2, 260))))
+            _fill_backdrop(gui)
+            title = gui._font(26, bold=True).render("THINKING TASK - Linear Equation", True, TEXT_COLOR)
+            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
+            eq = gui._font(28, bold=True).render(equation_text, True, TEXT_COLOR)
+            gui.screen.blit(eq, eq.get_rect(center=gui._spt((BASE_WIDTH // 2, 260))))
 
-        for rect, value in zip(base_rects, options):
-            screen_rect = gui._srect(rect)
-            pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
-            pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
-            text = gui._font(22, bold=True).render(f"x = {value}", True, TEXT_COLOR)
-            gui.screen.blit(text, text.get_rect(center=screen_rect.center))
+            for rect, value in zip(base_rects, options):
+                screen_rect = gui._srect(rect)
+                pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
+                pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
+                text = gui._font(22, bold=True).render(f"x = {value}", True, TEXT_COLOR)
+                gui.screen.blit(text, text.get_rect(center=screen_rect.center))
 
-        pygame.display.flip()
+            _draw_admin_skip_button(gui)
+            pygame.display.flip()
+    except _AdminSkipTask:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -374,32 +415,36 @@ def run_advanced_riddle_task(gui):
         for i in range(len(options))
     ]
 
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
+    try:
+        while True:
+            dt = gui.clock.tick(60) / 1000.0
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
 
-        events = _pump(gui)
-        for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for rect, value in zip(base_rects, options):
-                    if gui._srect(rect).collidepoint(event.pos):
-                        return value == answer
+            events = _pump(gui)
+            for event in events:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, value in zip(base_rects, options):
+                        if gui._srect(rect).collidepoint(event.pos):
+                            return value == answer
 
-        _fill_backdrop(gui)
-        title = gui._font(26, bold=True).render("THINKING TASK - Advanced Riddle", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
-        question_surf = gui._font(21, bold=True).render(question_text, True, TEXT_COLOR)
-        if question_surf.get_width() > BASE_WIDTH - 80:
-            question_surf = gui._font(17, bold=True).render(question_text, True, TEXT_COLOR)
-        gui.screen.blit(question_surf, question_surf.get_rect(center=gui._spt((BASE_WIDTH // 2, 260))))
+            _fill_backdrop(gui)
+            title = gui._font(26, bold=True).render("THINKING TASK - Advanced Riddle", True, TEXT_COLOR)
+            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
+            question_surf = gui._font(21, bold=True).render(question_text, True, TEXT_COLOR)
+            if question_surf.get_width() > BASE_WIDTH - 80:
+                question_surf = gui._font(17, bold=True).render(question_text, True, TEXT_COLOR)
+            gui.screen.blit(question_surf, question_surf.get_rect(center=gui._spt((BASE_WIDTH // 2, 260))))
 
-        for rect, value in zip(base_rects, options):
-            screen_rect = gui._srect(rect)
-            pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
-            pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
-            text = gui._font(20, bold=True).render(value, True, TEXT_COLOR)
-            gui.screen.blit(text, text.get_rect(center=screen_rect.center))
+            for rect, value in zip(base_rects, options):
+                screen_rect = gui._srect(rect)
+                pygame.draw.rect(gui.screen, BUTTON_BG, screen_rect, border_radius=gui._slen(8))
+                pygame.draw.rect(gui.screen, TEXT_COLOR, screen_rect, gui._slen(2), border_radius=gui._slen(8))
+                text = gui._font(20, bold=True).render(value, True, TEXT_COLOR)
+                gui.screen.blit(text, text.get_rect(center=screen_rect.center))
 
-        pygame.display.flip()
+            _draw_admin_skip_button(gui)
+            pygame.display.flip()
+    except _AdminSkipTask:
+        return True

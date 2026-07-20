@@ -1,7 +1,9 @@
 """State-transition logic for the Part C route-economy game's GUI: sorting,
-the real-time clock, boarding a line (including the Random Bus Delay System),
-win/loss detection, the debug level-jump buttons, Admin Mode (bypasses the
-money/time boarding gate for testing), and map-hover tracking.
+the real-time clock, boarding a line (the Wait Jump + travel-duration time
+leap, plus the Random Bus Delay System), win/loss detection, the debug
+level-jump buttons, Admin Mode (unrestricted boarding regardless of money/
+time/connectivity, while the economy still simulates normally -- see
+attempt_board), and map-hover tracking.
 
 GameLogicMixin is combined with the other *Mixin classes into game.py's
 GameGUI; every method here still just uses `self` as if it were defined
@@ -15,7 +17,8 @@ from dataclasses import replace
 import pygame
 
 from engine import (
-    board_route, can_board, enter_level, is_stuck, next_bus_minutes, routes_from, sort_routes, tick,
+    board_route, can_board, can_complete_final_leg, enter_level, is_stuck, next_bus_minutes, routes_from,
+    sort_routes, tick,
 )
 from levels import LEVELS
 from minigames import run_task, show_level_summary
@@ -68,6 +71,17 @@ class GameLogicMixin:
             self.message = f"Can't board {self._route_label(route)}: check money/time."
             return
 
+        # Phase 1 -- the Wait Jump: the moment boarding is confirmed, the
+        # wait for this route's next departure is spent immediately, before
+        # any animation or station task runs. This happens unconditionally,
+        # regardless of admin_mode -- Admin Mode only lifts the validation
+        # gates (above and below), never the economy simulation itself, so
+        # time/cash still move exactly like a normal game. Phase 2 (the
+        # route's own travel duration) is spent by board_route() below,
+        # once the bus has actually finished driving to the destination.
+        wait = next_bus_minutes(self.state, route)
+        self.state = replace(self.state, time_remaining=max(0.0, self.state.time_remaining - wait))
+
         # Highlight the boarding route on the map/list for the whole sequence.
         self.hovered_route = route
         color = self._route_color(route)
@@ -101,11 +115,13 @@ class GameLogicMixin:
             if self.screen_state != "playing":
                 return
 
-        # Re-check right before actually deducting: the wait-for-next-bus
-        # component of the cost can grow while the animation/task above was
-        # playing out, so a boarding that was valid on click can still fail.
-        # Admin Mode skips this gate entirely, same as the initial check above.
-        if not self.admin_mode and not can_board(self.state, route):
+        # Re-check right before actually deducting price + travel duration:
+        # the wait component was already spent above (Phase 1), so this
+        # final gate only needs price and the route's own duration -- but
+        # time can still have ticked down past that during the animation/
+        # task above. Admin Mode skips this gate entirely, same as the
+        # initial check above.
+        if not self.admin_mode and not can_complete_final_leg(self.state, route):
             self._trigger_game_over("lose")
             return
 
@@ -161,7 +177,8 @@ class GameLogicMixin:
         """P(delay) = route.distance / total distance of every line in the
         level -- a longer line boarded has a proportionally higher chance of
         a random city-traffic event tacking extra minutes onto the trip, on
-        top of the normal wait+duration cost. Only called for levels 4-5."""
+        top of the normal Wait Jump + travel-duration cost. Only called for
+        levels 4-5."""
         total_distance = sum(r.distance for r in level.bus_routes)
         probability = route.distance / total_distance if total_distance else 0.0
         if random.random() >= probability:
@@ -181,8 +198,13 @@ class GameLogicMixin:
         """Developer-only: flip the ADMIN MODE flag. While active,
         attempt_board() skips both money/time affordability checks and
         _check_stuck()'s lose-by-stranded detection, so any route --
-        including multi-transfer chains -- can be boarded freely regardless
-        of remaining time or cash, for testing routing in isolation."""
+        including multi-transfer chains, from anywhere on the map -- can be
+        boarded freely regardless of remaining time or cash. This is
+        boarding-validation only: the economy (Wait Jump, travel duration,
+        price, rewards) still applies exactly like normal play, and station
+        mini-games still launch and must be played (or dismissed via each
+        task's own SKIP TASK button, drawn whenever admin_mode is on -- see
+        mg_thinking.py/mg_memory.py/mg_agility.py's _draw_admin_skip_button)."""
         self.admin_mode = not self.admin_mode
         state_word = "ENABLED" if self.admin_mode else "DISABLED"
         self.message = f"[DEBUG] Admin Mode {state_word}."

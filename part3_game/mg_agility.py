@@ -37,6 +37,30 @@ YELLOW_ZONE = (225, 190, 60)
 NEEDLE_COLOR = (235, 232, 225)
 BAR_BORDER = (20, 18, 16)
 
+# Admin Mode's SKIP TASK button -- drawn on every frame of every task below
+# while gui.admin_mode is on, bottom-right corner. Admin Mode no longer
+# auto-bypasses mini-games (they always launch and must be played normally);
+# this button is the explicit, player-triggered way to instantly pass one.
+ADMIN_SKIP_RECT = pygame.Rect(BASE_WIDTH - 190, 540, 170, 42)
+ADMIN_SKIP_BG = (120, 50, 40)
+ADMIN_SKIP_BORDER = (235, 180, 90)
+
+
+class _AdminSkipTask(Exception):
+    """Raised by _pump() when Admin Mode's SKIP TASK button is clicked, to
+    unwind out of a task's blocking loop in one step and count as a pass --
+    caught once at the top of each run_*_task()."""
+
+
+def _draw_admin_skip_button(gui):
+    if not gui.admin_mode:
+        return
+    rect = gui._srect(ADMIN_SKIP_RECT)
+    pygame.draw.rect(gui.screen, ADMIN_SKIP_BG, rect, border_radius=gui._slen(8))
+    pygame.draw.rect(gui.screen, ADMIN_SKIP_BORDER, rect, gui._slen(2), border_radius=gui._slen(8))
+    label = gui._font(15, bold=True).render("SKIP TASK (ADMIN)", True, ADMIN_SKIP_BORDER)
+    gui.screen.blit(label, label.get_rect(center=rect.center))
+
 
 def _fill_backdrop(gui):
     """Full-window dark backdrop for a mini-game, independent of the map's
@@ -45,10 +69,19 @@ def _fill_backdrop(gui):
 
 
 def _pump(gui):
-    """Drain the event queue, handling window management first. Returns the
-    remaining (non window-management) events for task-specific handling."""
+    """Drain the event queue, handling window management first, then Admin
+    Mode's SKIP TASK button (raises _AdminSkipTask if clicked). Returns the
+    remaining events for task-specific handling."""
     events = pygame.event.get()
-    return [e for e in events if not gui.handle_window_event(e)]
+    remaining = []
+    for e in events:
+        if gui.handle_window_event(e):
+            continue
+        if gui.admin_mode and e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 \
+                and gui._srect(ADMIN_SKIP_RECT).collidepoint(e.pos):
+            raise _AdminSkipTask()
+        remaining.append(e)
+    return remaining
 
 
 # ---------------------------------------------------------------------------
@@ -135,26 +168,30 @@ def run_single_timing_bar_task(gui):
     in the green sweet spot at that moment, lose otherwise."""
     bar = _TimingBar(speed=0.6)
 
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
-        bar.update(dt)
+    try:
+        while True:
+            dt = gui.clock.tick(60) / 1000.0
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
+            bar.update(dt)
 
-        if _bar_press_triggered(gui):
-            return bar.in_green
+            if _bar_press_triggered(gui):
+                return bar.in_green
 
-        _fill_backdrop(gui)
-        title = gui._font(26, bold=True).render("AGILITY TASK - Timing Bar", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
-        hint = gui._font(18).render(
-            "Press SPACE or click when the needle is in the green zone!", True, DIM_TEXT_COLOR)
-        gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
+            _fill_backdrop(gui)
+            title = gui._font(26, bold=True).render("AGILITY TASK - Timing Bar", True, TEXT_COLOR)
+            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
+            hint = gui._font(18).render(
+                "Press SPACE or click when the needle is in the green zone!", True, DIM_TEXT_COLOR)
+            gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
 
-        _draw_timing_bar(gui, SINGLE_BAR_RECT, bar)
+            _draw_timing_bar(gui, SINGLE_BAR_RECT, bar)
 
-        pygame.display.flip()
+            _draw_admin_skip_button(gui)
+            pygame.display.flip()
+    except _AdminSkipTask:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -169,46 +206,50 @@ def run_whackamole_task(gui):
     target_r = 34  # BASE-space radius
     time_limit_per_target = 1.4
 
-    for index in range(5):
-        cx = random.uniform(120, BASE_WIDTH - 120)
-        cy = random.uniform(190, 460)
-        elapsed = 0.0
-        hit = False
+    try:
+        for index in range(5):
+            cx = random.uniform(120, BASE_WIDTH - 120)
+            cy = random.uniform(190, 460)
+            elapsed = 0.0
+            hit = False
 
-        while elapsed < time_limit_per_target and not hit:
-            dt = gui.clock.tick(60) / 1000.0
-            elapsed += dt
-            gui.advance_clock(dt)
-            if gui.screen_state != "playing":
+            while elapsed < time_limit_per_target and not hit:
+                dt = gui.clock.tick(60) / 1000.0
+                elapsed += dt
+                gui.advance_clock(dt)
+                if gui.screen_state != "playing":
+                    return False
+
+                for event in _pump(gui):
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        center = gui._spt((cx, cy))
+                        radius = gui._slen(target_r)
+                        dx, dy = event.pos[0] - center[0], event.pos[1] - center[1]
+                        if dx * dx + dy * dy <= radius * radius:
+                            hit = True
+
+                _fill_backdrop(gui)
+                title = gui._font(26, bold=True).render("AGILITY TASK - Rapid Targets", True, TEXT_COLOR)
+                gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 90))))
+                hint = gui._font(18).render(f"Target {index + 1} / 5 -- click it fast!", True, DIM_TEXT_COLOR)
+                gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 128))))
+
+                remaining_frac = max(0.0, 1.0 - elapsed / time_limit_per_target)
+                center = gui._spt((cx, cy))
+                pygame.draw.circle(gui.screen, TARGET_RING_COLOR, center,
+                                    gui._slen(target_r * (0.55 + 0.55 * remaining_frac)), gui._slen(3))
+                pygame.draw.circle(gui.screen, TARGET_COLOR, center, gui._slen(target_r))
+                pygame.draw.circle(gui.screen, TARGET_BORDER, center, gui._slen(target_r), gui._slen(2))
+
+                _draw_admin_skip_button(gui)
+                pygame.display.flip()
+
+            if not hit:
                 return False
 
-            for event in _pump(gui):
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    center = gui._spt((cx, cy))
-                    radius = gui._slen(target_r)
-                    dx, dy = event.pos[0] - center[0], event.pos[1] - center[1]
-                    if dx * dx + dy * dy <= radius * radius:
-                        hit = True
-
-            _fill_backdrop(gui)
-            title = gui._font(26, bold=True).render("AGILITY TASK - Rapid Targets", True, TEXT_COLOR)
-            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 90))))
-            hint = gui._font(18).render(f"Target {index + 1} / 5 -- click it fast!", True, DIM_TEXT_COLOR)
-            gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 128))))
-
-            remaining_frac = max(0.0, 1.0 - elapsed / time_limit_per_target)
-            center = gui._spt((cx, cy))
-            pygame.draw.circle(gui.screen, TARGET_RING_COLOR, center,
-                                gui._slen(target_r * (0.55 + 0.55 * remaining_frac)), gui._slen(3))
-            pygame.draw.circle(gui.screen, TARGET_COLOR, center, gui._slen(target_r))
-            pygame.draw.circle(gui.screen, TARGET_BORDER, center, gui._slen(target_r), gui._slen(2))
-
-            pygame.display.flip()
-
-        if not hit:
-            return False
-
-    return True
+        return True
+    except _AdminSkipTask:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -232,28 +273,32 @@ def run_dual_timing_bars_task(gui):
     the instant of the press."""
     bars = [_TimingBar(speed=0.55), _TimingBar(speed=0.8)]
 
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
-        for bar in bars:
-            bar.update(dt)
+    try:
+        while True:
+            dt = gui.clock.tick(60) / 1000.0
+            gui.advance_clock(dt)
+            if gui.screen_state != "playing":
+                return False
+            for bar in bars:
+                bar.update(dt)
 
-        if _bar_press_triggered(gui):
-            return all(bar.in_green for bar in bars)
+            if _bar_press_triggered(gui):
+                return all(bar.in_green for bar in bars)
 
-        _fill_backdrop(gui)
-        title = gui._font(26, bold=True).render("AGILITY TASK - Dual Timing Bars", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
-        hint = gui._font(18).render(
-            "Press SPACE or click ONLY when BOTH needles are in the green zone!", True, DIM_TEXT_COLOR)
-        gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
+            _fill_backdrop(gui)
+            title = gui._font(26, bold=True).render("AGILITY TASK - Dual Timing Bars", True, TEXT_COLOR)
+            gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 110))))
+            hint = gui._font(18).render(
+                "Press SPACE or click ONLY when BOTH needles are in the green zone!", True, DIM_TEXT_COLOR)
+            gui.screen.blit(hint, hint.get_rect(center=gui._spt((BASE_WIDTH // 2, 150))))
 
-        for bar, rect in zip(bars, BAR_RECTS):
-            _draw_timing_bar(gui, rect, bar)
+            for bar, rect in zip(bars, BAR_RECTS):
+                _draw_timing_bar(gui, rect, bar)
 
-        pygame.display.flip()
+            _draw_admin_skip_button(gui)
+            pygame.display.flip()
+    except _AdminSkipTask:
+        return True
 
 
 # ---------------------------------------------------------------------------

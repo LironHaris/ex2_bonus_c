@@ -72,9 +72,10 @@ def next_bus_minutes(state: GameState, route: BusRoute) -> int:
 def tick(state: GameState, elapsed_minutes: float) -> GameState:
     """Advance the continuous game clock by elapsed_minutes -- the clock keeps
     running in real time regardless of whether the player has boarded
-    anything yet, independent of the discrete duration+wait deduction
-    board_route() applies once a line is actually boarded. elapsed_minutes
-    also accumulates into elapsed_minutes, which drives next_bus_minutes()."""
+    anything yet, independent of the discrete Wait Jump + travel-duration
+    deductions a boarding applies (see game_logic.py's attempt_board).
+    elapsed_minutes also accumulates into elapsed_minutes, which drives
+    next_bus_minutes()."""
     return replace(
         state,
         time_remaining=max(0.0, state.time_remaining - elapsed_minutes),
@@ -84,9 +85,21 @@ def tick(state: GameState, elapsed_minutes: float) -> GameState:
 
 def can_board(state: GameState, route: BusRoute) -> bool:
     """A line is boardable if its price is affordable and there's enough time
-    left for both the wait for its next departure and the ride itself."""
+    left for both the wait for its next departure and the ride itself. This
+    is the *fresh* gate -- used before any time has been spent on this
+    boarding attempt (the Trip Planner, the Electronic Sign, is_stuck(), and
+    attempt_board()'s initial check all use this)."""
     wait = next_bus_minutes(state, route)
     return state.money >= route.price and state.time_remaining >= route.duration + wait
+
+
+def can_complete_final_leg(state: GameState, route: BusRoute) -> bool:
+    """Post-Wait-Jump gate: once the wait-for-next-departure component has
+    already been deducted the instant boarding was confirmed (see
+    game_logic.py's attempt_board, Phase 1: the Wait Jump), only price and
+    the route's own travel duration remain to check before actually
+    finishing the boarding via board_route()."""
+    return state.money >= route.price and state.time_remaining >= route.duration
 
 
 def is_stuck(state: GameState, level: LevelConfig) -> bool:
@@ -103,23 +116,26 @@ def enter_level(state: GameState, level: LevelConfig) -> GameState:
 
 
 def board_route(state: GameState, level: LevelConfig, route: BusRoute, bypass_checks: bool = False) -> GameState:
-    """Board `route`: deduct its price plus (wait-for-next-departure + travel
-    duration) in time, and move the player to route.destination. Only once
-    that destination is the level's end node does this also apply the
-    level's reward and advance level_index -- intermediate hops in a
-    multi-transfer level are otherwise "free" of level-clear side effects.
-    Raises ValueError if the gates (money/time) aren't met -- callers should
-    check can_board() first. bypass_checks=True skips that gate entirely
-    (money/time_remaining may go negative) -- used only by the GUI's
-    developer-only Admin Mode, never by normal play."""
-    if not bypass_checks and not can_board(state, route):
-        raise ValueError(f"cannot board {route.name!r}: fails money/time gate")
-    wait = next_bus_minutes(state, route)
+    """Finish boarding `route`: deduct its price plus travel duration in
+    time, and move the player to route.destination. The wait-for-next-
+    departure component is NOT deducted here -- callers spend that
+    separately and immediately, the instant boarding is confirmed (the
+    "Wait Jump"; see game_logic.py's attempt_board, Phase 1), well before
+    this function ever runs (Phase 2). Only once the destination is the
+    level's end node does this also apply the level's reward and advance
+    level_index -- intermediate hops in a multi-transfer level are
+    otherwise "free" of level-clear side effects. Raises ValueError if the
+    price/duration gate isn't met -- callers should check
+    can_complete_final_leg() first. bypass_checks=True skips that gate
+    entirely (money/time_remaining may go negative) -- used only by the
+    GUI's developer-only Admin Mode, never by normal play."""
+    if not bypass_checks and not can_complete_final_leg(state, route):
+        raise ValueError(f"cannot board {route.name!r}: fails money/duration gate")
     reached_end = route.destination == level.end
     return replace(
         state,
         money=state.money - route.price + (level.reward_money if reached_end else 0),
-        time_remaining=state.time_remaining - route.duration - wait + (level.reward_time if reached_end else 0),
+        time_remaining=state.time_remaining - route.duration + (level.reward_time if reached_end else 0),
         current_node=route.destination,
         level_index=state.level_index + 1 if reached_end else state.level_index,
     )

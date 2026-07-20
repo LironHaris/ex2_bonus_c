@@ -22,12 +22,15 @@ that game_logic.py's attempt_board() calls through run_task(); it holds no
 pygame drawing code itself (aside from run_ultimate_challenge_task's own
 orchestration, which just calls into the other modules' functions). All
 underlying task functions keep the global countdown ticking via
-gui.advance_clock() every frame during their blocking sub-loops (Admin Mode
-is orthogonal to this for Levels 2-4 -- it only affects whether
-attempt_board's money/time gate runs at all, not what happens once a
-mini-game itself starts; Level 5's combo is the one exception, see below),
-and reuse the shared BASE_WIDTH x BASE_HEIGHT design space and gui._s*/_font
-scaling helpers, so every task -- and the summary screen -- stays visually
+gui.advance_clock() every frame during their blocking sub-loops, and always
+launch and must be played normally regardless of Admin Mode -- Admin Mode
+only affects whether attempt_board's money/time/connectivity gates run at
+all (see game_logic.py), never whether a mini-game itself starts. Each
+individual task still offers its own explicit SKIP TASK button whenever
+gui.admin_mode is on (see each mg_*.py's _draw_admin_skip_button), which is
+how Admin Mode lets a task be bypassed instead. All tasks reuse the shared
+BASE_WIDTH x BASE_HEIGHT design space and gui._s*/_font scaling helpers, so
+every task -- and the summary screen -- stays visually
 consistent whether the window is resized or fullscreen.
 """
 
@@ -86,11 +89,11 @@ def run_ultimate_challenge_task(gui):
     sub-task already keeps it ticking via gui.advance_clock() every frame;
     failing any one sub-task (or running out of global time mid-task, which
     surfaces the same way) fails the whole station challenge immediately,
-    without running the remaining ones. Admin Mode bypasses this entire
-    combo outright -- see game_logic.py's GameLogicMixin._toggle_admin_mode."""
-    if gui.admin_mode:
-        return True
-
+    without running the remaining ones. Admin Mode no longer bypasses this
+    combo outright -- each of the 3 sub-tasks still launches and must be
+    played (or dismissed individually via its own SKIP TASK button, drawn
+    whenever gui.admin_mode is on -- see mg_thinking.py/mg_memory.py/
+    mg_agility.py's _draw_admin_skip_button)."""
     tiers = _TIER_POOLS[:]
     random.shuffle(tiers)  # tiers[i] is assigned to _CATEGORIES[i]
     selected = [tiers[i][category] for i, category in enumerate(_CATEGORIES)]
