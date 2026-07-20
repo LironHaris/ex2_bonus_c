@@ -167,22 +167,33 @@ SORT_LABELS = [
 # same BASE_WIDTH x BASE_HEIGHT design space as the real game.
 TUTORIAL_HIGHLIGHT_COLOR = (255, 214, 40)  # bright gold spotlight border
 
-TUTORIAL_MAP_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 10, 760, 270)
-TUTORIAL_SIGN_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 290, 760, 110)
-TUTORIAL_CAPTION_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 410, 760, 122)
+TUTORIAL_MAP_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 10, 760, 220)
+TUTORIAL_SIGN_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 240, 760, 100)
 TUTORIAL_TRIP_TAB_RECT = pygame.Rect(778, 150, 22, 120)
-TUTORIAL_TABLE_RECT = pygame.Rect(230, 90, 340, 190)
-TUTORIAL_NEXT_BUTTON_RECT = pygame.Rect(640, 536, 120, 38)
-TUTORIAL_BEGIN_BUTTON_RECT = pygame.Rect(500, 530, 260, 46)
+TUTORIAL_TABLE_RECT = pygame.Rect(230, 90, 340, 170)
+
+# The caption box's text region (top) and its button footer (bottom) are two
+# fixed, non-overlapping strips -- the footer's height/position never moves
+# regardless of how many lines the current step's text wraps to, so a long
+# caption (like Step 4's) can never grow into and cover the NEXT/BACK
+# buttons. Sized to comfortably fit TUTORIAL_STEPS' longest entry (3 wrapped
+# lines at the caption's own font/width -- see game_tutorial.py's
+# _draw_tutorial_caption) plus the "STEP X OF 7" progress line above it.
+TUTORIAL_CAPTION_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 350, 760, 160)
+TUTORIAL_CAPTION_DIVIDER_Y = TUTORIAL_CAPTION_RECT.y + 96
+TUTORIAL_CAPTION_BUTTON_ROW_Y = TUTORIAL_CAPTION_RECT.y + 108
+TUTORIAL_BACK_BUTTON_RECT = pygame.Rect(472, TUTORIAL_CAPTION_BUTTON_ROW_Y, 100, 40)
+TUTORIAL_NEXT_BUTTON_RECT = pygame.Rect(664, TUTORIAL_CAPTION_BUTTON_ROW_Y, 100, 40)
+TUTORIAL_BEGIN_BUTTON_RECT = pygame.Rect(584, TUTORIAL_CAPTION_BUTTON_ROW_Y, 180, 40)
 
 # 3 sample lines fanning out from a shared HOME to a shared UNIVERSITY, each
 # via its own station -- enough to demonstrate line boarding (step 2) and all
 # 3 task categories (step 5) without needing any real engine/level data.
-TUTORIAL_HOME_POS = (120, 195)
-TUTORIAL_UNIVERSITY_POS = (680, 195)
-_TUTORIAL_STATION_THINKING = (280, 120)
-_TUTORIAL_STATION_AGILITY = (400, 280)
-_TUTORIAL_STATION_MEMORY = (540, 140)
+TUTORIAL_HOME_POS = (120, 170)
+TUTORIAL_UNIVERSITY_POS = (680, 170)
+_TUTORIAL_STATION_THINKING = (280, 100)
+_TUTORIAL_STATION_AGILITY = (400, 245)
+_TUTORIAL_STATION_MEMORY = (540, 115)
 TUTORIAL_MOCK_LINES = [
     (ROUTE_COLORS[0], [TUTORIAL_HOME_POS, _TUTORIAL_STATION_THINKING, TUTORIAL_UNIVERSITY_POS]),
     (ROUTE_COLORS[1], [TUTORIAL_HOME_POS, _TUTORIAL_STATION_AGILITY, TUTORIAL_UNIVERSITY_POS]),
@@ -232,3 +243,22 @@ TUTORIAL_STEPS = [
         "text": "Are you ready to take on the challenge? Click below to begin your first transit mission!",
     },
 ]
+
+# -- global pause -------------------------------------------------------------
+# ESC pauses any live level -- including from inside a mini-game/bus-
+# animation/delay-popup/level-summary blocking sub-loop -- via
+# GameGUI.handle_window_event, the single per-event choke point every one of
+# those loops already calls every frame (see game_logic.py's
+# GameLogicMixin._run_pause_overlay). The countdown clock freezes simply by
+# that loop never calling advance_clock() while it owns control.
+PAUSE_RESUME_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, BASE_HEIGHT // 2 - 10, 220, 54)
+PAUSE_MENU_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 130, BASE_HEIGHT // 2 + 60, 260, 54)
+
+
+class ReturnToMainMenu(Exception):
+    """Raised by GameLogicMixin._run_pause_overlay() when the paused player
+    clicks RETURN TO MAIN MENU, to unwind out of however deeply nested the
+    current blocking loop is (a mini-game, the bus animation, the delay
+    popup, the level summary...) in one step -- caught once at the top of
+    game.py's run(), mirroring how each mg_*.py's _AdminSkipTask unwinds a
+    single mini-game task the same way."""

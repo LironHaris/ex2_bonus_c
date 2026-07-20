@@ -3,7 +3,9 @@ the real-time clock, boarding a line (the Wait Jump + travel-duration time
 leap, plus the Random Bus Delay System), win/loss detection, the debug
 level-jump buttons, Admin Mode (unrestricted boarding regardless of money/
 time/connectivity, while the economy still simulates normally -- see
-attempt_board), and map-hover tracking.
+attempt_board), the global ESC pause overlay (_run_pause_overlay, which
+freezes the countdown clock and can be entered from inside any blocking
+sub-loop), and map-hover tracking.
 
 GameLogicMixin is combined with the other *Mixin classes into game.py's
 GameGUI; every method here still just uses `self` as if it were defined
@@ -12,6 +14,7 @@ composed instance regardless of which file a method was defined in.
 """
 
 import random
+import sys
 from dataclasses import replace
 
 import pygame
@@ -23,8 +26,11 @@ from engine import (
 from levels import LEVELS
 from minigames import run_task, show_level_summary
 
-from game_constants import DELAY_EVENTS, GAME_MINUTES_PER_REAL_SECOND, LINE_LABELS, MAP_CONTENT_RECT, ROUTE_COLORS
-from game_geometry import map_point, node_label, point_segment_distance, route_bounds
+from game_constants import (
+    AFFORD_COLOR, BASE_HEIGHT, BASE_WIDTH, DELAY_EVENTS, GAME_MINUTES_PER_REAL_SECOND, LINE_LABELS, MAP_CONTENT_RECT,
+    PANEL_BG, PAUSE_MENU_BUTTON_RECT, PAUSE_RESUME_BUTTON_RECT, ReturnToMainMenu, ROUTE_COLORS,
+)
+from game_geometry import darken, map_point, node_label, point_segment_distance, route_bounds
 
 
 class GameLogicMixin:
@@ -208,6 +214,62 @@ class GameLogicMixin:
         self.admin_mode = not self.admin_mode
         state_word = "ENABLED" if self.admin_mode else "DISABLED"
         self.message = f"[DEBUG] Admin Mode {state_word}."
+
+    def _run_pause_overlay(self):
+        """Global ESC pause: blocking sub-loop (same pattern as the
+        mini-games/bus animation/delay popup/level summary), entered from
+        handle_window_event -- the single per-event choke point every one of
+        those other blocking loops already calls every frame -- so ESC
+        pauses the game from inside any of them, not just the plain map
+        screen. The countdown clock freezes simply by this loop never
+        calling advance_clock() while it owns control; resuming (RESUME
+        GAME, or ESC again) just returns, letting whichever loop called us
+        continue exactly where it left off. RETURN TO MAIN MENU instead
+        raises ReturnToMainMenu to unwind all the way back to game.py's
+        run(), mirroring how each mg_*.py's _AdminSkipTask unwinds a single
+        mini-game task the same way."""
+        frozen_background = self.screen.copy()
+        self.pause_resume_rect = self._srect(PAUSE_RESUME_BUTTON_RECT)
+        self.pause_menu_rect = self._srect(PAUSE_MENU_BUTTON_RECT)
+
+        while True:
+            self.clock.tick(30)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit(0)
+                if event.type == pygame.VIDEORESIZE and not self.fullscreen:
+                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                    self._recompute_scale()
+                    frozen_background = self.screen.copy()
+                    continue
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                    frozen_background = self.screen.copy()
+                    continue
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.pause_resume_rect.collidepoint(event.pos):
+                        return
+                    if self.pause_menu_rect.collidepoint(event.pos):
+                        raise ReturnToMainMenu()
+
+            self.screen.blit(frozen_background, (0, 0))
+            self._draw_pause_overlay()
+            pygame.display.flip()
+
+    def _draw_pause_overlay(self):
+        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 165))
+        self.screen.blit(overlay, (0, 0))
+
+        title_surf = self._font(44, bold=True).render("GAME PAUSED", True, (245, 245, 240))
+        self.screen.blit(title_surf, title_surf.get_rect(center=self._spt((BASE_WIDTH // 2, BASE_HEIGHT // 2 - 90))))
+
+        self.pause_resume_rect = self._draw_menu_button(PAUSE_RESUME_BUTTON_RECT, "RESUME GAME", AFFORD_COLOR)
+        self.pause_menu_rect = self._draw_menu_button(PAUSE_MENU_BUTTON_RECT, "RETURN TO MAIN MENU",
+                                                        darken(PANEL_BG, 90))
 
     def _debug_change_level(self, delta):
         """Developer-only: jump straight to the next/previous level and

@@ -25,13 +25,13 @@ import pygame
 
 from game_constants import (
     ADMIN_MODE_RECT, AFFORD_COLOR, BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, DIM_TEXT_COLOR,
-    LETTERBOX_COLOR,
-    OUTLINE_COLOR, PANEL_BG, ROAD_EDGE, ROAD_FILL, ROAD_OUTLINE, SIGN_BG, SIGN_BORDER_COLOR, SIGN_TEXT_COLOR,
-    TEXT_COLOR, TOP_PANEL_HEIGHT, TUTORIAL_BEGIN_BUTTON_RECT, TUTORIAL_CAPTION_RECT, TUTORIAL_HIGHLIGHT_COLOR,
-    TUTORIAL_HOME_POS, TUTORIAL_MAP_RECT, TUTORIAL_MOCK_LINES, TUTORIAL_MOCK_STATIONS, TUTORIAL_NEXT_BUTTON_RECT,
-    TUTORIAL_SIGN_RECT, TUTORIAL_STEPS, TUTORIAL_TABLE_RECT, TUTORIAL_TRIP_TAB_RECT, TUTORIAL_UNIVERSITY_POS,
-    WINDOW_BG,
+    LETTERBOX_COLOR, OUTLINE_COLOR, PANEL_BG, ROAD_EDGE, ROAD_FILL, ROAD_OUTLINE, SIGN_BG, SIGN_BORDER_COLOR,
+    SIGN_TEXT_COLOR, TEXT_COLOR, TOP_PANEL_HEIGHT, TUTORIAL_BACK_BUTTON_RECT, TUTORIAL_BEGIN_BUTTON_RECT,
+    TUTORIAL_CAPTION_DIVIDER_Y, TUTORIAL_CAPTION_RECT, TUTORIAL_HIGHLIGHT_COLOR, TUTORIAL_HOME_POS, TUTORIAL_MAP_RECT,
+    TUTORIAL_MOCK_LINES, TUTORIAL_MOCK_STATIONS, TUTORIAL_NEXT_BUTTON_RECT, TUTORIAL_SIGN_RECT, TUTORIAL_STEPS,
+    TUTORIAL_TABLE_RECT, TUTORIAL_TRIP_TAB_RECT, TUTORIAL_UNIVERSITY_POS, WINDOW_BG,
 )
+from game_geometry import darken
 
 # Static sample rows for the mock electronic sign / Trip Planner table --
 # purely illustrative, unrelated to any real level's actual routes.
@@ -175,6 +175,13 @@ class TutorialMixin:
 
     # -- caption + navigation -------------------------------------------------
     def _draw_tutorial_caption(self):
+        """The caption box is split into two fixed, non-overlapping strips:
+        a text region (progress line + wrapped step text, up top) and a
+        button footer (BACK / NEXT-or-BEGIN-MISSION, pinned to the bottom
+        via TUTORIAL_CAPTION_BUTTON_ROW_Y). The footer's position never
+        depends on how many lines the current step's text wraps to, so even
+        the longest entry (Step 4, 3 lines) can never grow down into and
+        cover the buttons."""
         rect = TUTORIAL_CAPTION_RECT
         pygame.draw.rect(self.screen, PANEL_BG, self._srect(rect), border_radius=self._slen(8))
         pygame.draw.rect(self.screen, OUTLINE_COLOR, self._srect(rect), max(1, self._slen(2)),
@@ -194,11 +201,20 @@ class TutorialMixin:
             self.screen.blit(surf, self._spt((rect.x + 16, ly)))
             ly += body_font.get_linesize()
 
+        pygame.draw.line(self.screen, DIM_TEXT_COLOR, self._spt((rect.x + 16, TUTORIAL_CAPTION_DIVIDER_Y)),
+                          self._spt((rect.right - 16, TUTORIAL_CAPTION_DIVIDER_Y)), max(1, self._slen(1)))
+
         skip_surf = self._font(12).render("ESC / Skip Tutorial", True, DIM_TEXT_COLOR)
         skip_rect = skip_surf.get_rect()
-        skip_rect.bottomleft = self._spt((rect.x + 16, rect.bottom - 10))
+        skip_rect.midleft = self._spt((rect.x + 16, TUTORIAL_CAPTION_DIVIDER_Y + 20))
         self.screen.blit(skip_surf, skip_rect)
         self.tutorial_skip_rect = skip_rect
+
+        if step == 0:
+            self.tutorial_back_rect = pygame.Rect(0, 0, 0, 0)  # first step -- no previous step to revisit
+        else:
+            self.tutorial_back_rect = self._draw_menu_button(TUTORIAL_BACK_BUTTON_RECT, "BACK",
+                                                               darken(PANEL_BG, 90))
 
         if step == len(TUTORIAL_STEPS) - 1:
             self.tutorial_next_rect = self._draw_menu_button(TUTORIAL_BEGIN_BUTTON_RECT, "BEGIN MISSION",

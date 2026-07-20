@@ -45,8 +45,9 @@ from game_animation import AnimationMixin  # noqa: E402
 from game_constants import (  # noqa: E402
     ADMIN_MODE_RECT, BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, LETTERBOX_COLOR, RETURN_BUTTON_RECT,
     STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT,
-    TUTORIAL_BUTTON_RECT, TUTORIAL_NEXT_BUTTON_RECT, TUTORIAL_STEPS, WINDOW_BG,
+    TUTORIAL_BACK_BUTTON_RECT, TUTORIAL_BUTTON_RECT, TUTORIAL_NEXT_BUTTON_RECT, TUTORIAL_STEPS, WINDOW_BG,
 )
+from game_constants import ReturnToMainMenu  # noqa: E402
 from game_logic import GameLogicMixin  # noqa: E402
 from game_map_render import MapRendererMixin  # noqa: E402
 from game_panels import PanelsMixin  # noqa: E402
@@ -79,6 +80,7 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
         # the TUTORIAL button is clicked from the title screen.
         self.tutorial_step = 0
         self.tutorial_next_rect = self._srect(TUTORIAL_NEXT_BUTTON_RECT)
+        self.tutorial_back_rect = self._srect(TUTORIAL_BACK_BUTTON_RECT)
         self.tutorial_skip_rect = pygame.Rect(0, 0, 0, 0)
 
         # Developer-only: while True, attempt_board() boards any route for
@@ -150,9 +152,13 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
         self._recompute_scale()
 
     def handle_window_event(self, event):
-        """Handle QUIT/resize/fullscreen-toggle. Shared by the main loop and
-        by the mini-game sub-loops so window handling stays consistent
-        everywhere. Returns True if the event was a window-management event."""
+        """Handle QUIT/resize/fullscreen-toggle/the global ESC pause. Shared
+        by the main loop and by every blocking sub-loop (mini-games, the bus
+        animation, the delay popup, the level summary) so this handling
+        stays consistent everywhere -- which is exactly what lets ESC pause
+        the game from inside any of them, not just the plain map screen: see
+        GameLogicMixin._run_pause_overlay. Returns True if the event was
+        handled here (window management, or a pause-then-resume cycle)."""
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit(0)
@@ -162,6 +168,9 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
             return True
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
             self.toggle_fullscreen()
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and self.screen_state == "playing":
+            self._run_pause_overlay()  # blocks until resumed; may raise ReturnToMainMenu
             return True
         return False
 
@@ -181,8 +190,9 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
 
         if self.screen_state == "tutorial":
             # The walkthrough itself is click-through/read-only apart from
-            # NEXT (or BEGIN MISSION on the final step) and the ESC/Skip
-            # Tutorial escape hatch -- see game_tutorial.py's TutorialMixin.
+            # BACK, NEXT (or BEGIN MISSION on the final step), and the
+            # ESC/Skip Tutorial escape hatch -- see game_tutorial.py's
+            # TutorialMixin.
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.screen_state = "title"
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -191,6 +201,8 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
                         self.screen_state = "playing"
                     else:
                         self.tutorial_step += 1
+                elif self.tutorial_step > 0 and self.tutorial_back_rect.collidepoint(event.pos):
+                    self.tutorial_step -= 1
                 elif self.tutorial_skip_rect.collidepoint(event.pos):
                     self.screen_state = "title"
             return
@@ -228,10 +240,9 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
             # Sorting (the real C bubble/quick sort) can only be triggered
             # from inside the Trip Planner, via its clickable Sort by...
             # buttons; everything else is ignored while it's open except
-            # closing it (ESC, or clicking outside the modal).
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                self.trip_planner_open = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # closing it by clicking outside the modal (ESC is now the
+            # global pause shortcut instead -- see handle_window_event).
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for rect, field in self.sort_button_rects:
                     if rect.collidepoint(event.pos):
                         self.apply_sort(field)
@@ -261,7 +272,17 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, Tut
             dt_ms = self.clock.tick(30)
 
             for event in pygame.event.get():
-                self.handle_event(event)
+                try:
+                    self.handle_event(event)
+                except ReturnToMainMenu:
+                    # RETURN TO MAIN MENU was clicked from the pause overlay,
+                    # possibly many blocking sub-loops deep (a mini-game, the
+                    # bus animation...) -- unwind straight back here, reset
+                    # the run, and drop the rest of this frame's now-stale
+                    # event batch.
+                    self._start_new_game()
+                    self.screen_state = "title"
+                    break
 
             if self.screen_state == "playing":
                 self.advance_clock(dt_ms / 1000.0)
