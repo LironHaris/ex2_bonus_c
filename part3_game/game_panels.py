@@ -9,9 +9,10 @@ from engine import can_board, next_bus_minutes
 
 from game_constants import (
     ADMIN_MODE_RECT, AFFORD_COLOR, BASE_HEIGHT, BASE_WIDTH, BOTTOM_PANEL_RECT, DEBUG_NEXT_RECT, DEBUG_PREV_RECT,
-    DENY_COLOR, DIM_TEXT_COLOR, LETTERBOX_COLOR, OUTLINE_COLOR, PANEL_BG, RETURN_BUTTON_RECT, RULES_TEXT, SIGN_BG,
+    DENY_COLOR, DIM_TEXT_COLOR, LETTERBOX_COLOR, OUTLINE_COLOR, PANEL_BG, RETURN_BUTTON_RECT, SIGN_BG,
     SIGN_BORDER_COLOR, SIGN_TEXT_COLOR, SIGN_TEXT_DIM, SIGN_TEXT_HOVER, SORT_FIELDS, SORT_LABELS, START_BUTTON_RECT,
-    TEXT_COLOR, TITLE, TOP_PANEL_HEIGHT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, WINDOW_BG,
+    TEXT_COLOR, TITLE, TOP_PANEL_HEIGHT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, TUTORIAL_BUTTON_RECT,
+    WINDOW_BG,
 )
 from game_geometry import darken, lighten, node_label, node_short_label
 
@@ -232,26 +233,21 @@ class PanelsMixin:
         return rect
 
     def draw_title_screen(self):
+        """A minimalist entry point -- title plus exactly two choices: play
+        straight away, or take the interactive TUTORIAL walkthrough first
+        (see game_tutorial.py's TutorialMixin). The old inline rules
+        paragraph now lives there instead, taught step by step."""
         self.screen.fill(LETTERBOX_COLOR)
         pygame.draw.rect(self.screen, WINDOW_BG, self._srect(pygame.Rect(0, 0, BASE_WIDTH, BASE_HEIGHT)))
 
         title_surf = self._font(46, bold=True).render(TITLE, True, TEXT_COLOR)
-        self.screen.blit(title_surf, title_surf.get_rect(center=self._spt((BASE_WIDTH // 2, 130))))
+        self.screen.blit(title_surf, title_surf.get_rect(center=self._spt((BASE_WIDTH // 2, 210))))
 
         subtitle = self._font(17).render("A C-Sorting-Powered Bus Route Planning Game", True, DIM_TEXT_COLOR)
-        self.screen.blit(subtitle, subtitle.get_rect(center=self._spt((BASE_WIDTH // 2, 172))))
-
-        rules_font = self._font(16)
-        max_width = 600 * self.scale
-        lines = self._wrap_text(RULES_TEXT, rules_font, max_width)
-        line_height = rules_font.get_linesize()
-        cx = self._spt((BASE_WIDTH // 2, 0))[0]
-        top = self._spt((0, 230))[1]
-        for i, line in enumerate(lines):
-            surf = rules_font.render(line, True, TEXT_COLOR)
-            self.screen.blit(surf, surf.get_rect(center=(cx, top + i * line_height)))
+        self.screen.blit(subtitle, subtitle.get_rect(center=self._spt((BASE_WIDTH // 2, 254))))
 
         self.start_button_rect = self._draw_menu_button(START_BUTTON_RECT, "START GAME", AFFORD_COLOR)
+        self.tutorial_button_rect = self._draw_menu_button(TUTORIAL_BUTTON_RECT, "TUTORIAL", darken(PANEL_BG, 90))
 
     def draw_end_screen(self):
         self.screen.fill(LETTERBOX_COLOR)

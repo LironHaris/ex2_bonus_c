@@ -23,7 +23,10 @@ manageable size:
   - game_map_render.py  -- MapRendererMixin: buildings, roads, and every
                             node icon.
   - game_panels.py      -- PanelsMixin: status bar, electronic sign, Trip
-                            Planner, title/end screens.
+                            Planner, the minimalist title screen, end screen.
+  - game_tutorial.py    -- TutorialMixin: the interactive walkthrough (a
+                            standalone mock scene + step-by-step spotlight
+                            overlay), reachable from the title screen.
 This file assembles GameGUI from those mixins and owns window setup, the
 responsive-scaling helpers, and the top-level event/render loop.
 """
@@ -41,14 +44,16 @@ from models import GameState  # noqa: E402
 from game_animation import AnimationMixin  # noqa: E402
 from game_constants import (  # noqa: E402
     ADMIN_MODE_RECT, BASE_HEIGHT, BASE_WIDTH, DEBUG_NEXT_RECT, DEBUG_PREV_RECT, LETTERBOX_COLOR, RETURN_BUTTON_RECT,
-    STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT, WINDOW_BG,
+    STARTING_MONEY, STARTING_TIME, START_BUTTON_RECT, TRIP_PLANNER_MODAL_RECT, TRIP_PLANNER_TAB_RECT,
+    TUTORIAL_BUTTON_RECT, TUTORIAL_NEXT_BUTTON_RECT, TUTORIAL_STEPS, WINDOW_BG,
 )
 from game_logic import GameLogicMixin  # noqa: E402
 from game_map_render import MapRendererMixin  # noqa: E402
 from game_panels import PanelsMixin  # noqa: E402
+from game_tutorial import TutorialMixin  # noqa: E402
 
 
-class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
+class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin, TutorialMixin):
     def __init__(self):
         pygame.init()
         self.fullscreen = False
@@ -63,10 +68,18 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
         self.sort_button_rects = []  # [(rect, sort_field), ...] -- Trip Planner's clickable Sort by... buttons
         self.trip_planner_tab_rect = self._srect(TRIP_PLANNER_TAB_RECT)
         self.start_button_rect = self._srect(START_BUTTON_RECT)
+        self.tutorial_button_rect = self._srect(TUTORIAL_BUTTON_RECT)
         self.return_button_rect = self._srect(RETURN_BUTTON_RECT)
         self.debug_prev_rect = self._srect(DEBUG_PREV_RECT)
         self.debug_next_rect = self._srect(DEBUG_NEXT_RECT)
         self.debug_admin_rect = self._srect(ADMIN_MODE_RECT)
+
+        # Interactive walkthrough (see game_tutorial.py's TutorialMixin):
+        # tutorial_step is 0-based into TUTORIAL_STEPS, reset to 0 every time
+        # the TUTORIAL button is clicked from the title screen.
+        self.tutorial_step = 0
+        self.tutorial_next_rect = self._srect(TUTORIAL_NEXT_BUTTON_RECT)
+        self.tutorial_skip_rect = pygame.Rect(0, 0, 0, 0)
 
         # Developer-only: while True, attempt_board() boards any route for
         # free (bypasses money/time), toggled via the ADMIN MODE button --
@@ -74,7 +87,7 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
         self.admin_mode = False
 
         self._start_new_game()
-        self.screen_state = "title"  # "title" | "playing" | "over" -- title overrides the "playing" _start_new_game() sets
+        self.screen_state = "title"  # "title" | "tutorial" | "playing" | "over" -- title overrides "playing"
 
     def _start_new_game(self):
         """(Re)initialize a fresh run: starting money/time, Level 1, and all
@@ -158,9 +171,28 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
             return
 
         if self.screen_state == "title":
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
-                    and self.start_button_rect.collidepoint(event.pos):
-                self.screen_state = "playing"
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.start_button_rect.collidepoint(event.pos):
+                    self.screen_state = "playing"
+                elif self.tutorial_button_rect.collidepoint(event.pos):
+                    self.tutorial_step = 0
+                    self.screen_state = "tutorial"
+            return
+
+        if self.screen_state == "tutorial":
+            # The walkthrough itself is click-through/read-only apart from
+            # NEXT (or BEGIN MISSION on the final step) and the ESC/Skip
+            # Tutorial escape hatch -- see game_tutorial.py's TutorialMixin.
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.screen_state = "title"
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.tutorial_next_rect.collidepoint(event.pos):
+                    if self.tutorial_step >= len(TUTORIAL_STEPS) - 1:
+                        self.screen_state = "playing"
+                    else:
+                        self.tutorial_step += 1
+                elif self.tutorial_skip_rect.collidepoint(event.pos):
+                    self.screen_state = "title"
             return
 
         if self.screen_state == "over":
@@ -237,6 +269,8 @@ class GameGUI(GameLogicMixin, AnimationMixin, MapRendererMixin, PanelsMixin):
 
             if self.screen_state == "title":
                 self.draw_title_screen()
+            elif self.screen_state == "tutorial":
+                self.draw_tutorial_screen()
             elif self.screen_state == "over":
                 self.draw_end_screen()
             else:

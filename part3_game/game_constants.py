@@ -132,8 +132,8 @@ DEBUG_NEXT_RECT = pygame.Rect(BASE_WIDTH - 92, 4, 82, 20)
 ADMIN_MODE_RECT = pygame.Rect(BASE_WIDTH - 288, 4, 100, 20)
 
 # -- Random Bus Delay System (Jerusalem traffic theme) -----------------------
-# Undocumented on purpose -- not mentioned in RULES_TEXT. Only active in
-# levels 4-5 (LEVELS[3]/LEVELS[4]); see GameLogicMixin._maybe_trigger_delay.
+# Undocumented on purpose -- not mentioned anywhere in the UI/tutorial. Only
+# active in levels 4-5 (LEVELS[3]/LEVELS[4]); see GameLogicMixin._maybe_trigger_delay.
 DELAY_EVENTS = [
     ("Protest in the city center!", 3),
     ("Traffic Accident ahead!", 7),
@@ -144,18 +144,12 @@ POPUP_BORDER = (32, 28, 24)
 POPUP_TEXT_COLOR = (45, 34, 10)
 
 # -- title screen & end screen -----------------------------------------------
+# The title screen is deliberately minimal (title + two buttons) -- the rules
+# used to live here as a wall of text, but are now taught interactively by
+# the TUTORIAL walkthrough instead (see the "-- tutorial --" section below).
 TITLE = "BUS ROUTE ECONOMY"
-RULES_TEXT = (
-    "Sort the bus lines with the real C bubble/quick sort algorithms in the Trip Planner, "
-    "then board lines to travel from HOME to UNIVERSITY. Every line costs money, and costs "
-    "time equal to its wait for the next departure plus its travel duration, so you can only "
-    "board a line you can afford and reach on time. Some lines have a station task -- Agility, "
-    "Memory, or Thinking -- you must pass along the way. In later levels not every line starts "
-    "at HOME -- you'll need to transfer between connecting lines at hub stations to cross the "
-    "whole network. Clear all 5 levels to win, but fail a task or run out of time or money and "
-    "it's game over."
-)
-START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, 440, 220, 56)
+START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, 380, 220, 56)
+TUTORIAL_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 110, 452, 220, 50)
 RETURN_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 130, 380, 260, 54)
 
 SORT_FIELDS = ["name", "distance", "duration"]
@@ -163,4 +157,78 @@ SORT_LABELS = [
     "Sort by Name (Bubble Sort)",
     "Sort by Distance (Quick Sort)",
     "Sort by Duration (Quick Sort)",
+]
+
+# -- tutorial -----------------------------------------------------------------
+# The interactive walkthrough (GameGUI's "tutorial" screen_state, see
+# game_tutorial.py's TutorialMixin) renders its own small, standalone mock
+# scene -- NOT the real map/state -- so it can teach the UI before a real run
+# has even started. Every rect below is that mock scene's own layout, in the
+# same BASE_WIDTH x BASE_HEIGHT design space as the real game.
+TUTORIAL_HIGHLIGHT_COLOR = (255, 214, 40)  # bright gold spotlight border
+
+TUTORIAL_MAP_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 10, 760, 270)
+TUTORIAL_SIGN_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 290, 760, 110)
+TUTORIAL_CAPTION_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 410, 760, 122)
+TUTORIAL_TRIP_TAB_RECT = pygame.Rect(778, 150, 22, 120)
+TUTORIAL_TABLE_RECT = pygame.Rect(230, 90, 340, 190)
+TUTORIAL_NEXT_BUTTON_RECT = pygame.Rect(640, 536, 120, 38)
+TUTORIAL_BEGIN_BUTTON_RECT = pygame.Rect(500, 530, 260, 46)
+
+# 3 sample lines fanning out from a shared HOME to a shared UNIVERSITY, each
+# via its own station -- enough to demonstrate line boarding (step 2) and all
+# 3 task categories (step 5) without needing any real engine/level data.
+TUTORIAL_HOME_POS = (120, 195)
+TUTORIAL_UNIVERSITY_POS = (680, 195)
+_TUTORIAL_STATION_THINKING = (280, 120)
+_TUTORIAL_STATION_AGILITY = (400, 280)
+_TUTORIAL_STATION_MEMORY = (540, 140)
+TUTORIAL_MOCK_LINES = [
+    (ROUTE_COLORS[0], [TUTORIAL_HOME_POS, _TUTORIAL_STATION_THINKING, TUTORIAL_UNIVERSITY_POS]),
+    (ROUTE_COLORS[1], [TUTORIAL_HOME_POS, _TUTORIAL_STATION_AGILITY, TUTORIAL_UNIVERSITY_POS]),
+    (ROUTE_COLORS[2], [TUTORIAL_HOME_POS, _TUTORIAL_STATION_MEMORY, TUTORIAL_UNIVERSITY_POS]),
+]
+TUTORIAL_MOCK_STATIONS = [
+    (_TUTORIAL_STATION_THINKING, ROUTE_COLORS[0], "thinking"),
+    (_TUTORIAL_STATION_AGILITY, ROUTE_COLORS[1], "agility"),
+    (_TUTORIAL_STATION_MEMORY, ROUTE_COLORS[2], "memory"),
+]
+
+# The 7 sequential walkthrough screens, in order -- text is verbatim UI copy,
+# always in English. TutorialMixin drives self.tutorial_step (0-based) through
+# this list; each entry's highlighted element(s) are decided by
+# TutorialMixin._tutorial_highlight_rects(), keyed by the same step index.
+TUTORIAL_STEPS = [
+    {
+        "text": ("Goal: You are a student trying to reach the university on time for a critical exam "
+                 "within your limited budget. Pay close attention to your remaining Time and Cash!"),
+    },
+    {
+        "text": ("Map Navigation: Plan your path carefully. To select and board a bus line, you can "
+                 "click directly on the route's path vector layout visualised on the map."),
+    },
+    {
+        "text": ("Bus Dashboard: Keep an eye on Arrival Time, Travel Duration, and Ticket Price. Saved "
+                 "money and time carry over as crucial metrics to boost your performance in subsequent "
+                 "levels!"),
+    },
+    {
+        "text": ("Trip Planner: Clicking here opens a detailed dashboard for all routes. You can click "
+                 "column headers to instantly sort lines by name, duration, or distance. Keep in mind: "
+                 "Jerusalem traffic is highly unpredictable! Choosing longer, cross-city routes elevates "
+                 "the probability of experiencing unexpected delays."),
+    },
+    {
+        "text": ("Station Tasks: During your journey, you will encounter 3 distinct cognitive task types "
+                 "at transit hubs: Thinking, Agility, and Memory. You must successfully conquer these "
+                 "challenges to proceed along your bus route."),
+    },
+    {
+        "text": ("Admin Mode: Toggling this feature activates full debugging capabilities. It enables "
+                 "skipping tasks entirely, jumping freely between levels, and choosing ANY line from any "
+                 "station on the map, regardless of cost, time constraints, or position connectivity."),
+    },
+    {
+        "text": "Are you ready to take on the challenge? Click below to begin your first transit mission!",
+    },
 ]
