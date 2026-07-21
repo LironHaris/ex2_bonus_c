@@ -49,6 +49,57 @@ def _draw_admin_skip_button(gui):
     label = gui._font(15, bold=True).render("SKIP TASK (ADMIN)", True, ADMIN_SKIP_BORDER)
     gui.screen.blit(label, label.get_rect(center=rect.center))
 
+
+# Pre-game instruction overlay -- shared by every task in this module, drawn
+# before that task's own gameplay loop starts. Gameplay/drawing/timers stay
+# fully paused/hidden behind this static title + instructions + START TASK
+# button until the player clicks it; the global background clock keeps
+# ticking normally throughout (gui.advance_clock), same as every other
+# blocking overlay in this game -- only each task's OWN internal
+# timer/reveal/spawn logic is held back until then.
+INTRO_START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 140, 380, 280, 60)
+INTRO_BUTTON_COLOR = (60, 170, 80)
+
+
+def _run_task_intro(gui, title, lines):
+    """Blocks until the player clicks START TASK (or Admin Mode's SKIP TASK,
+    handled by _pump like every other phase). `lines` is a list of
+    instruction strings, one per rendered line. Returns False if the game
+    ended while this screen was up."""
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+
+        started = False
+        for event in _pump(gui):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and gui._srect(INTRO_START_BUTTON_RECT).collidepoint(event.pos):
+                started = True
+
+        _fill_backdrop(gui)
+        title_surf = gui._font(30, bold=True).render(title, True, TEXT_COLOR)
+        gui.screen.blit(title_surf, title_surf.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
+        y = 240
+        for line in lines:
+            surf = gui._font(18).render(line, True, DIM_TEXT_COLOR)
+            gui.screen.blit(surf, surf.get_rect(center=gui._spt((BASE_WIDTH // 2, y))))
+            y += 28
+
+        button_rect = gui._srect(INTRO_START_BUTTON_RECT)
+        pygame.draw.rect(gui.screen, INTRO_BUTTON_COLOR, button_rect, border_radius=gui._slen(10))
+        pygame.draw.rect(gui.screen, TEXT_COLOR, button_rect, gui._slen(2), border_radius=gui._slen(10))
+        label = gui._font(22, bold=True).render("START TASK", True, (250, 250, 245))
+        gui.screen.blit(label, label.get_rect(center=button_rect.center))
+
+        _draw_admin_skip_button(gui)
+        pygame.display.flip()
+
+        if started:
+            return True
+
+
 # Flags are drawn from plain pygame primitives (rects/a circle) -- no image
 # assets. Each entry is the list of bar colors; orientation says whether
 # they're read left-to-right or top-to-bottom.
@@ -128,6 +179,9 @@ FLAG_COUNTRIES = [
 
 
 def run_flag_trivia_task(gui):
+    """Gated behind a static pre-game instruction overlay (_run_task_intro)
+    -- the flag never renders and the answer buttons are never interactive
+    until the player clicks START TASK there."""
     answer = random.choice(FLAG_COUNTRIES)
     distractors = random.sample([c for c in FLAG_COUNTRIES if c != answer], 3)
     choices = [answer] + distractors
@@ -144,6 +198,10 @@ def run_flag_trivia_task(gui):
     ]
 
     try:
+        if not _run_task_intro(gui, "FLAG TRIVIA CHALLENGE",
+                                ["A flag will be shown. Identify which country it belongs to from 4 choices!"]):
+            return False
+
         while True:
             dt = gui.clock.tick(60) / 1000.0
             gui.advance_clock(dt)
@@ -210,6 +268,9 @@ def _generate_linear_equation():
 
 
 def run_linear_equation_task(gui):
+    """Gated behind a static pre-game instruction overlay (_run_task_intro)
+    -- the equation never renders and the answer buttons are never
+    interactive until the player clicks START TASK there."""
     equation_text, options, answer = _generate_linear_equation()
 
     button_w, button_h, gap = 150, 60, 20
@@ -221,6 +282,10 @@ def run_linear_equation_task(gui):
     ]
 
     try:
+        if not _run_task_intro(gui, "EQUATION SOLVER",
+                                ["Solve the equation for x, then pick the correct answer from the choices below!"]):
+            return False
+
         while True:
             dt = gui.clock.tick(60) / 1000.0
             gui.advance_clock(dt)
@@ -401,7 +466,13 @@ def run_advanced_riddle_task(gui):
     (50%) and one of the two Sequence puzzles -- Fibonacci or Digit Circle
     Count, picked with equal probability between themselves (50% combined,
     25% each) -- then rendered with the same multiple-choice button pattern
-    as the other Thinking tasks."""
+    as the other Thinking tasks. The underlying puzzle mechanisms are never
+    named in any UI text (pre-game instructions included) -- the sequence
+    variants only ever say "Complete the sequence by choosing the next
+    number:", never "Fibonacci" or "Digit Circle Count". Gated behind a
+    static pre-game instruction overlay (_run_task_intro) -- the riddle
+    never renders and the answer buttons are never interactive until the
+    player clicks START TASK there."""
     if random.random() < 0.5:
         question_text, options, answer = _generate_system_riddle()
     else:
@@ -416,6 +487,11 @@ def run_advanced_riddle_task(gui):
     ]
 
     try:
+        if not _run_task_intro(gui, "ADVANCED RIDDLE CHALLENGE",
+                                ["You will face a math puzzle or a number pattern.",
+                                 "Study it carefully and pick the correct answer!"]):
+            return False
+
         while True:
             dt = gui.clock.tick(60) / 1000.0
             gui.advance_clock(dt)

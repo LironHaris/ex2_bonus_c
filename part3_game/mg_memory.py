@@ -80,6 +80,56 @@ def _pump(gui):
     return remaining
 
 
+# Pre-game instruction overlay -- shared by every task in this module, drawn
+# before that task's own gameplay loop starts. Gameplay/drawing/timers stay
+# fully paused/hidden behind this static title + instructions + START TASK
+# button until the player clicks it; the global background clock keeps
+# ticking normally throughout (gui.advance_clock), same as every other
+# blocking overlay in this game -- only each task's OWN internal
+# timer/reveal/spawn logic is held back until then.
+INTRO_START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 140, 380, 280, 60)
+INTRO_BUTTON_COLOR = (60, 170, 80)
+
+
+def _run_task_intro(gui, title, lines):
+    """Blocks until the player clicks START TASK (or Admin Mode's SKIP TASK,
+    handled by _pump like every other phase). `lines` is a list of
+    instruction strings, one per rendered line. Returns False if the game
+    ended while this screen was up."""
+    while True:
+        dt = gui.clock.tick(60) / 1000.0
+        gui.advance_clock(dt)
+        if gui.screen_state != "playing":
+            return False
+
+        started = False
+        for event in _pump(gui):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
+                    and gui._srect(INTRO_START_BUTTON_RECT).collidepoint(event.pos):
+                started = True
+
+        _fill_backdrop(gui)
+        title_surf = gui._font(30, bold=True).render(title, True, TEXT_COLOR)
+        gui.screen.blit(title_surf, title_surf.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
+        y = 240
+        for line in lines:
+            surf = gui._font(18).render(line, True, DIM_TEXT_COLOR)
+            gui.screen.blit(surf, surf.get_rect(center=gui._spt((BASE_WIDTH // 2, y))))
+            y += 28
+
+        button_rect = gui._srect(INTRO_START_BUTTON_RECT)
+        pygame.draw.rect(gui.screen, INTRO_BUTTON_COLOR, button_rect, border_radius=gui._slen(10))
+        pygame.draw.rect(gui.screen, TEXT_COLOR, button_rect, gui._slen(2), border_radius=gui._slen(10))
+        label = gui._font(22, bold=True).render("START TASK", True, (250, 250, 245))
+        gui.screen.blit(label, label.get_rect(center=button_rect.center))
+
+        _draw_admin_skip_button(gui)
+        pygame.display.flip()
+
+        if started:
+            return True
+
+
 # ---------------------------------------------------------------------------
 # Level 2: Shape Sequences
 # ---------------------------------------------------------------------------
@@ -122,7 +172,9 @@ def run_shape_sequence_task(gui):
     """4 shapes flash one at a time in a random order (length 4, repeats
     allowed); the player must then click them back in the same order. Any
     wrong click fails the task immediately; completing the full sequence
-    passes it."""
+    passes it. Gated behind a static pre-game instruction overlay
+    (_run_task_intro) -- the flashing sequence never starts until the
+    player clicks START TASK there."""
     sequence = [random.choice(SHAPE_NAMES) for _ in range(SEQUENCE_LENGTH)]
     tile_rects = _shape_tile_rects()
 
@@ -155,6 +207,11 @@ def run_shape_sequence_task(gui):
         return True
 
     try:
+        if not _run_task_intro(gui, "SHAPES MEMORY CHALLENGE",
+                                ["Watch the sequence of shapes carefully,",
+                                 "then click them back in the same order!"]):
+            return False
+
         # -- phase 1: play back the sequence, one shape flashed at a time --
         for step_shape in sequence:
             step_index = SHAPE_NAMES.index(step_shape)
@@ -216,61 +273,14 @@ def run_shape_sequence_task(gui):
 # Level 3: Missing Number
 # ---------------------------------------------------------------------------
 
-MISSING_NUMBER_START_BUTTON_RECT = pygame.Rect(BASE_WIDTH // 2 - 140, 380, 280, 60)
-START_BUTTON_COLOR = (60, 170, 80)
-
-
-def _run_missing_number_instructions(gui):
-    """Pre-game instruction overlay: the 6 numbers stay hidden and the
-    memorization timer does not start until the player clicks START TASK --
-    only then does run_missing_number_task begin phase 1. The global
-    background clock (gui.advance_clock) keeps ticking normally throughout,
-    same as every other blocking overlay in this game; only the mini-game's
-    OWN reveal/timer is held back. Returns False if the game ended while
-    this screen was up."""
-    while True:
-        dt = gui.clock.tick(60) / 1000.0
-        gui.advance_clock(dt)
-        if gui.screen_state != "playing":
-            return False
-
-        started = False
-        for event in _pump(gui):
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 \
-                    and gui._srect(MISSING_NUMBER_START_BUTTON_RECT).collidepoint(event.pos):
-                started = True
-
-        _fill_backdrop(gui)
-        title = gui._font(30, bold=True).render("MEMORY CHALLENGE", True, TEXT_COLOR)
-        gui.screen.blit(title, title.get_rect(center=gui._spt((BASE_WIDTH // 2, 190))))
-        line1 = gui._font(18).render(
-            "6 random numbers will appear with mixed sizes and angles.", True, DIM_TEXT_COLOR)
-        gui.screen.blit(line1, line1.get_rect(center=gui._spt((BASE_WIDTH // 2, 240))))
-        line2 = gui._font(18).render(
-            "Study them to deduce which 7th number is missing!", True, DIM_TEXT_COLOR)
-        gui.screen.blit(line2, line2.get_rect(center=gui._spt((BASE_WIDTH // 2, 268))))
-
-        button_rect = gui._srect(MISSING_NUMBER_START_BUTTON_RECT)
-        pygame.draw.rect(gui.screen, START_BUTTON_COLOR, button_rect, border_radius=gui._slen(10))
-        pygame.draw.rect(gui.screen, TEXT_COLOR, button_rect, gui._slen(2), border_radius=gui._slen(10))
-        label = gui._font(22, bold=True).render("START TASK", True, (250, 250, 245))
-        gui.screen.blit(label, label.get_rect(center=button_rect.center))
-
-        _draw_admin_skip_button(gui)
-        pygame.display.flip()
-
-        if started:
-            return True
-
-
 def run_missing_number_task(gui):
     """6 of the digits 1-7 are scattered on screen (random size + rotation)
     for 3 seconds; the player must then pick out the one digit that was
     never shown, from 4 choices (the missing digit plus 3 real distractors
     that genuinely were on screen). Gated behind a static pre-game
-    instruction overlay (_run_missing_number_instructions) -- the numbers
-    never render and the memorization timer never starts until the player
-    clicks START TASK there."""
+    instruction overlay (_run_task_intro) -- the numbers never render and
+    the memorization timer never starts until the player clicks START TASK
+    there."""
     pool = list(range(1, 8))  # {1, 2, 3, 4, 5, 6, 7}
     missing = random.choice(pool)
     shown = [n for n in pool if n != missing]
@@ -281,7 +291,9 @@ def run_missing_number_task(gui):
     angles = [random.uniform(-45, 45) for _ in shown]
 
     try:
-        if not _run_missing_number_instructions(gui):
+        if not _run_task_intro(gui, "MISSING NUMBER CHALLENGE",
+                                ["6 random numbers will appear with mixed sizes and angles.",
+                                 "Study them to deduce which 7th number is missing!"]):
             return False
 
         # -- phase 1: show the 6 numbers for 3 seconds --
@@ -401,7 +413,9 @@ def run_shell_game_task(gui):
     to and settles under its chosen cup, which is held long enough to be
     unambiguous. The cups then hide it, a simplified horizontal shuffle
     swaps cup positions a few times (animated), and the player must click
-    the cup that ended up with the ball."""
+    the cup that ended up with the ball. Gated behind a static pre-game
+    instruction overlay (_run_task_intro) -- the cups/ball never render
+    until the player clicks START TASK there."""
     cups = [{"id": i, "x": float(CUP_SLOT_X[i])} for i in range(3)]
     ball_cup_id = random.choice(cups)["id"]
     ball_target_x = next(c["x"] for c in cups if c["id"] == ball_cup_id)
@@ -418,6 +432,11 @@ def run_shell_game_task(gui):
             _draw_ball(gui, ball_pos)
 
     try:
+        if not _run_task_intro(gui, "SHELL GAME CHALLENGE",
+                                ["Watch closely as the ball is hidden under a cup,",
+                                 "then track it through the shuffle to find it!"]):
+            return False
+
         # -- phase 1a: the ball appears at a neutral starting position, held
         # still long enough for the player to clearly register where it starts --
         elapsed = 0.0
