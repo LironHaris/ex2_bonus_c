@@ -175,13 +175,14 @@ TUTORIAL_TABLE_RECT = pygame.Rect(230, 90, 340, 170)
 # The caption box's text region (top) and its button footer (bottom) are two
 # fixed, non-overlapping strips -- the footer's height/position never moves
 # regardless of how many lines the current step's text wraps to, so a long
-# caption (like Step 4's) can never grow into and cover the NEXT/BACK
-# buttons. Sized to comfortably fit TUTORIAL_STEPS' longest entry (3 wrapped
-# lines at the caption's own font/width -- see game_tutorial.py's
-# _draw_tutorial_caption) plus the "STEP X OF 7" progress line above it.
-TUTORIAL_CAPTION_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 350, 760, 160)
-TUTORIAL_CAPTION_DIVIDER_Y = TUTORIAL_CAPTION_RECT.y + 96
-TUTORIAL_CAPTION_BUTTON_ROW_Y = TUTORIAL_CAPTION_RECT.y + 108
+# caption (like Step 3's dual-boarding-method note) can never grow into and
+# cover the NEXT/BACK buttons. Sized to comfortably fit TUTORIAL_STEPS'
+# longest entry (4 wrapped lines at the caption's own font/width -- see
+# game_tutorial.py's _draw_tutorial_caption) plus the "STEP X OF 7" progress
+# line above it.
+TUTORIAL_CAPTION_RECT = pygame.Rect(20, TOP_PANEL_HEIGHT + 350, 760, 184)
+TUTORIAL_CAPTION_DIVIDER_Y = TUTORIAL_CAPTION_RECT.y + 120
+TUTORIAL_CAPTION_BUTTON_ROW_Y = TUTORIAL_CAPTION_RECT.y + 132
 TUTORIAL_BACK_BUTTON_RECT = pygame.Rect(472, TUTORIAL_CAPTION_BUTTON_ROW_Y, 100, 40)
 TUTORIAL_NEXT_BUTTON_RECT = pygame.Rect(664, TUTORIAL_CAPTION_BUTTON_ROW_Y, 100, 40)
 TUTORIAL_BEGIN_BUTTON_RECT = pygame.Rect(584, TUTORIAL_CAPTION_BUTTON_ROW_Y, 180, 40)
@@ -221,7 +222,9 @@ TUTORIAL_STEPS = [
     {
         "text": ("Bus Dashboard: Keep an eye on Arrival Time, Travel Duration, and Ticket Price. Saved "
                  "money and time carry over as crucial metrics to boost your performance in subsequent "
-                 "levels!"),
+                 "levels! Note: You can board a bus line either by clicking directly on its physical "
+                 "path vector on the map, OR by clicking on its corresponding row entry inside this "
+                 "Electronic Board Sign."),
     },
     {
         "text": ("Trip Planner: Clicking here opens a detailed dashboard for all routes. You can click "

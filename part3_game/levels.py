@@ -37,20 +37,24 @@ LEVEL_1_INTRO = LevelConfig(
     start="HOME",
     end="UNIVERSITY",
     nodes={"HOME": HOME, "UNIVERSITY": UNIVERSITY},
-    # Introductory level: every line drives straight from HOME to UNIVERSITY
-    # with no intermediate station and no mini-game -- station/task_type are
-    # both None, and game.py's attempt_board()/draw_map() special-case that
-    # to skip the station-task sequence entirely.
+    # Introductory level: every line still has no intermediate station and no
+    # mini-game -- station/task_type are both None, and game.py's
+    # attempt_board()/draw_map() special-case that to skip the station-task
+    # sequence entirely. Each line's path DOES carry its own bend waypoint
+    # (row -3/0/+3) though, purely so the 3 lines fan out onto visually
+    # distinct road vectors on the map instead of overlapping on the same
+    # HOME-UNIVERSITY segment -- station stays None throughout, so this is
+    # geometry only, not a station.
     bus_routes=[
         BusRoute("redline", distance=50, duration=10, frequency=3, price=15,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (-3, 10), UNIVERSITY], station=None, task_type=None),
         BusRoute("greenline", distance=70, duration=14, frequency=4, price=25,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (0, 10), UNIVERSITY], station=None, task_type=None),
         BusRoute("blueline", distance=40, duration=12, frequency=2, price=5,
                  origin="HOME", destination="UNIVERSITY",
-                 path=[HOME, UNIVERSITY], station=None, task_type=None),
+                 path=[HOME, (3, 10), UNIVERSITY], station=None, task_type=None),
     ],
     reward_money=20,
     reward_time=14,
